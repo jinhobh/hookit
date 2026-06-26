@@ -1,0 +1,45 @@
+# Local development stack for the Reliable Webhook Delivery Platform.
+#
+# Usage:
+#   docker compose up --build        # start app + postgres
+#   docker compose down              # stop
+#   docker compose down -v           # stop and remove the database volume
+#
+# The `app` service currently serves only GET /health. The database is started
+# now so later phases (migrations, models, worker) need no compose changes.
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: webhook
+      POSTGRES_PASSWORD: webhook
+      POSTGRES_DB: webhook
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U webhook -d webhook"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # NOTE: a Dockerfile is added in a later phase (see docs/ROADMAP.md, Phase 1).
+    # Until then, run the app locally with:
+    #   uvicorn app.main:app --reload
+    environment:
+      APP_ENV: local
+      DATABASE_URL: postgresql+psycopg://webhook:webhook@postgres:5432/webhook
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:

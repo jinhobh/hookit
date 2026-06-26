@@ -1,0 +1,83 @@
+name: Agent - Builder
+
+# Implements exactly one `agent:ready` issue per run as a single PR. Runs the
+# four checks, opens a PR, links the issue, labels it `agent:needs-review`.
+# Never pushes to main and never merges. See agents/builder.md.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Every 4 hours.
+    - cron: "0 */4 * * *"
+
+# Needs to push a branch, open a PR, and update issue/PR labels.
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  # Serialize builders so two runs never grab the same issue.
+  group: agent-builder
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Run Builder agent
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package with dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run Builder
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Auth via a Claude Pro/Max subscription token (generate locally with
+          # `claude setup-token`, store as the CLAUDE_CODE_OAUTH_TOKEN secret).
+          # To use a metered API key instead, swap this for:
+          #   anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Builder may edit files, run the local checks, git, and gh — but the
+          # prompt and CLAUDE.md forbid pushing to main, merging, or weakening CI.
+          claude_args: >-
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(ruff:*),Bash(mypy:*),Bash(pytest:*),Bash(pip install:*),Bash(git:*),Bash(gh issue:*),Bash(gh pr create:*),Bash(gh pr edit:*)"
+          prompt: |
+            You are the Builder agent for this repository.
+
+            Read and follow agents/builder.md exactly, and obey CLAUDE.md.
+
+            Procedure:
+            1. Find the OLDEST open issue labeled `agent:ready` and NOT labeled
+               `agent:in-progress` (prefer issues labeled `agent:changes-needed`).
+               If none exists, STOP and report "no ready work".
+            2. Label that ONE issue `agent:in-progress`.
+            3. Create a branch `type/short-summary-<issue#>` (never work on main).
+            4. Implement the smallest complete solution meeting every acceptance
+               criterion. Add/update tests. No unrelated refactors. No new
+               dependencies without justification in the PR body.
+            5. Run, in order, and ensure all pass:
+               `ruff format --check .`, `ruff check .`, `mypy app tests`,
+               `pytest`. If a command cannot run, say so in the PR body. Never
+               weaken, skip, or delete checks/tests to go green.
+            6. Commit (Conventional Commits, `Refs #<n>`, Co-Authored-By trailer),
+               push the branch, and open ONE PR that `Closes #<issue>` with all
+               required PR body sections from CLAUDE.md §6 (paste real command
+               output under Verification). Label the PR `agent:needs-review`.
+
+            You must NOT merge any PR, NOT approve any PR, NOT push to main, and
+            NOT force-push. If blocked, stop and comment on the issue describing
+            the blocker instead of opening a broken PR.

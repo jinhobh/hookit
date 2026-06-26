@@ -1,0 +1,64 @@
+name: Agent - Planner
+
+# Keeps the issue backlog stocked. Reads docs + open issues and, when fewer than
+# 5 `agent:ready` issues exist, creates up to 3 small, non-duplicate issues.
+# Writes NO code. See agents/planner.md.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Daily at 06:00 UTC.
+    - cron: "0 6 * * *"
+
+# Least privilege: read the repo, manage issues only. No code/PR write access.
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: agent-planner
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Run Planner agent
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run Planner
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Auth via a Claude Pro/Max subscription token (generate locally with
+          # `claude setup-token`, store as the CLAUDE_CODE_OAUTH_TOKEN secret).
+          # To use a metered API key instead, swap this for:
+          #   anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Conservative tool surface: read files and run only `gh` for issues.
+          claude_args: >-
+            --allowedTools "Read,Glob,Grep,Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue create:*),Bash(gh label list:*)"
+          prompt: |
+            You are the Planner agent for this repository.
+
+            Read and follow agents/planner.md exactly, and obey CLAUDE.md.
+            Ground all issues in docs/PROJECT_SPEC.md and docs/ROADMAP.md.
+
+            Procedure:
+            1. List open issues labeled `agent:ready` (use `gh issue list`).
+            2. If 5 or more exist, STOP and report that the queue is full —
+               create nothing.
+            3. Otherwise, create up to 3 NEW, non-duplicate, single-PR-sized
+               issues that advance the earliest unfinished roadmap phase. Check
+               existing open AND closed issues first to avoid duplicates.
+
+            Every issue you create MUST include: Goal, Context, Acceptance
+            criteria, Implementation notes, Verification commands (including the
+            four gates: `ruff format --check .`, `ruff check .`,
+            `mypy app tests`, `pytest`), and labels (exactly one `type:*`, one
+            `risk:*`, plus `agent:ready`).
+
+            You must NOT write or modify any code, and you must NOT open or merge
+            pull requests. Report how many `agent:ready` issues existed, how many
+            you created, and their titles.
