@@ -37,7 +37,9 @@ jobs:
           # To use a metered API key instead, swap this for:
           #   anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # PAT (not GITHUB_TOKEN) so the `agent:approved` label this adds
+          # triggers the auto-merge workflow.
+          github_token: ${{ secrets.AGENT_GH_TOKEN }}
           # Read-only over files: no Edit/Write. Only `gh` commands that comment
           # on / label the PR are permitted — never merge, edit, or push.
           claude_args: >-

@@ -6,6 +6,10 @@ name: Agent - Builder
 
 on:
   workflow_dispatch:
+  # Self-advancing loop: every merge to main kicks the next build. The cron is
+  # a backstop in case an event is missed.
+  push:
+    branches: [main]
   schedule:
     # Every 4 hours.
     - cron: "0 */4 * * *"
@@ -50,30 +54,39 @@ jobs:
           # To use a metered API key instead, swap this for:
           #   anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Use a dedicated PAT (NOT the default GITHUB_TOKEN) so the PR this
+          # opens actually triggers the CI and Reviewer workflows — events made
+          # by GITHUB_TOKEN are suppressed by GitHub and would stall the loop.
+          github_token: ${{ secrets.AGENT_GH_TOKEN }}
           # Builder may edit files, run the local checks, git, and gh — but the
           # prompt and CLAUDE.md forbid pushing to main, merging, or weakening CI.
           claude_args: >-
-            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(ruff:*),Bash(mypy:*),Bash(pytest:*),Bash(pip install:*),Bash(git:*),Bash(gh issue:*),Bash(gh pr create:*),Bash(gh pr edit:*)"
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(ruff:*),Bash(mypy:*),Bash(pytest:*),Bash(pip install:*),Bash(git:*),Bash(gh issue:*),Bash(gh pr list:*),Bash(gh pr create:*),Bash(gh pr edit:*)"
           prompt: |
             You are the Builder agent for this repository.
 
             Read and follow agents/builder.md exactly, and obey CLAUDE.md.
 
             Procedure:
-            1. Find the OLDEST open issue labeled `agent:ready` and NOT labeled
-               `agent:in-progress` (prefer issues labeled `agent:changes-needed`).
-               If none exists, STOP and report "no ready work".
-            2. Label that ONE issue `agent:in-progress`.
-            3. Create a branch `type/short-summary-<issue#>` (never work on main).
-            4. Implement the smallest complete solution meeting every acceptance
+            1. FIRST check for work already in flight: list open PRs
+               (`gh pr list --state open`). If ANY open PR is labeled
+               `agent:needs-review` or `agent:approved`, STOP immediately and
+               report "work in flight" — only one PR may be open at a time so
+               dependent issues build in order.
+            2. Otherwise find the OLDEST open issue labeled `agent:ready` and NOT
+               labeled `agent:in-progress` (prefer issues labeled
+               `agent:changes-needed`). If none exists, STOP and report "no ready
+               work".
+            3. Label that ONE issue `agent:in-progress`.
+            4. Create a branch `type/short-summary-<issue#>` (never work on main).
+            5. Implement the smallest complete solution meeting every acceptance
                criterion. Add/update tests. No unrelated refactors. No new
                dependencies without justification in the PR body.
-            5. Run, in order, and ensure all pass:
+            6. Run, in order, and ensure all pass:
                `ruff format --check .`, `ruff check .`, `mypy app tests`,
                `pytest`. If a command cannot run, say so in the PR body. Never
                weaken, skip, or delete checks/tests to go green.
-            6. Commit (Conventional Commits, `Refs #<n>`, Co-Authored-By trailer),
+            7. Commit (Conventional Commits, `Refs #<n>`, Co-Authored-By trailer),
                push the branch, and open ONE PR that `Closes #<issue>` with all
                required PR body sections from CLAUDE.md §6 (paste real command
                output under Verification). Label the PR `agent:needs-review`.
