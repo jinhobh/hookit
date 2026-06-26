@@ -22,24 +22,6 @@ jobs:
     name: Lint, type-check, test
     runs-on: ubuntu-latest
 
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: webhook
-          POSTGRES_PASSWORD: webhook
-          POSTGRES_DB: webhook
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U webhook -d webhook"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
-    env:
-      DATABASE_URL: postgresql+psycopg://webhook:webhook@localhost:5432/webhook
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
