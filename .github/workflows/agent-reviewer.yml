@@ -37,11 +37,13 @@ jobs:
           # To use a metered API key instead, swap this for:
           #   anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # PAT (not GITHUB_TOKEN) so the `agent:approved` label this adds
+          # triggers the auto-merge workflow.
+          github_token: ${{ secrets.AGENT_GH_TOKEN }}
           # Read-only over files: no Edit/Write. Only `gh` commands that comment
           # on / label the PR are permitted — never merge, edit, or push.
           claude_args: >-
-            --allowedTools "Read,Glob,Grep,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr review:*),Bash(gh pr edit:*),Bash(gh issue view:*)"
+            --allowedTools "Read,Glob,Grep,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr review:*),Bash(gh pr edit:*),Bash(gh issue view:*),Bash(gh workflow run:*)"
           prompt: |
             You are the Reviewer agent for this repository. PR number:
             ${{ github.event.pull_request.number }} (if empty, review the most
@@ -63,6 +65,11 @@ jobs:
             4. Apply exactly one label: `agent:approved` if it meets the bar with
                no blocking concerns, otherwise `agent:changes-needed` (and remove
                `agent:approved` if present).
+            5. If — and only if — you set `agent:changes-needed`, dispatch the
+               Builder to address your feedback:
+               `gh workflow run agent-builder.yml`. Do NOT dispatch on approval
+               (auto-merge handles that).
 
-            Remember: the human owner is the final merge gate. When risk is high
-            or the call is borderline, say so explicitly. Never rubber-stamp.
+            `agent:approved` lets the auto-merge workflow merge the PR once CI is
+            green. When risk is high or the call is borderline, say so explicitly
+            in your comment so a human can intervene. Never rubber-stamp.

@@ -132,17 +132,22 @@ Agents never merge and never push to `main`. Full details:
 
 ## 8. Human owner responsibilities
 
-The human owner ([@jinhobh](https://github.com/jinhobh)) is the **only** actor
-who approves and merges PRs. Required via [`.github/CODEOWNERS`](.github/CODEOWNERS)
-and branch protection. The owner should:
+This repo runs in **autonomous (auto-merge) mode**: the Planner, Builder, and
+Reviewer run on their own, and the `auto-merge` workflow squash-merges any PR
+that is CI-green and Reviewer-approved — which re-triggers the Builder for the
+next issue. The loop self-advances with no human merge.
 
-1. Review and merge PRs that pass CI and Reviewer approval.
-2. Keep the agent auth secret configured: `CLAUDE_CODE_OAUTH_TOKEN` (from a Claude
+The human owner ([@jinhobh](https://github.com/jinhobh)) only needs to:
+
+1. Keep the agent auth secret configured: `CLAUDE_CODE_OAUTH_TOKEN` (from a Claude
    Pro/Max subscription via `claude setup-token`) or `ANTHROPIC_API_KEY`.
-3. Maintain branch protection (no force-push / no direct push to `main`).
+2. Keep the `AGENT_GH_TOKEN` PAT secret valid (used so agent actions trigger the
+   next workflow — see [`docs/AGENT_WORKFLOW.md`](docs/AGENT_WORKFLOW.md)).
+3. Intervene when an agent gets stuck (a PR stays `agent:changes-needed`) or to
+   steer the roadmap.
 
-The owner should **not** need to hand-hold day-to-day development — the issue
-queue drives it.
+To restore a human merge gate instead, delete `.github/workflows/auto-merge.yml`
+(and/or add branch protection requiring CODEOWNERS review).
 
 ## 9. Current status
 
