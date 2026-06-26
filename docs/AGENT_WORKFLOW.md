@@ -12,10 +12,35 @@ governing rules are in [`CLAUDE.md`](../CLAUDE.md); role prompts are in
 | Actor | Trigger | Writes code? | Merges? | Output |
 | --- | --- | --- | --- | --- |
 | Planner | daily cron + manual | No | No | New `agent:ready` issues |
-| Builder | every 4h cron + manual | Yes (one PR) | No | Branch + PR, `agent:needs-review` |
+| Builder | push to main + every 4h cron + manual | Yes (one PR) | No | Branch + PR, `agent:needs-review` |
 | Reviewer | PR events + manual | No | No | PR comment + `agent:approved`/`agent:changes-needed` |
 | CI | every PR / push to main | No | No | Pass/fail status checks |
-| Human owner | as needed | Optionally | **Yes** | Approve + merge |
+| Auto-merge | `agent:approved` added + manual | No | **Yes** (deterministic) | Squash-merges green, approved PRs |
+| Human owner | as needed | Optionally | Optionally | Provides secrets; can intervene anytime |
+
+> **Autonomous (auto-merge) mode is enabled.** The loop is self-advancing and
+> needs no human merge. The `Builder` (`agents/builder.md`) and `Reviewer`
+> (`agents/reviewer.md`) **agents** still never merge — only the deterministic
+> `auto-merge.yml` workflow does, and only when CI is green *and* the Reviewer
+> approved. To restore a human merge gate, delete `auto-merge.yml` (or add
+> branch protection requiring CODEOWNERS review).
+
+### The self-advancing loop
+
+```
+merge to main ─▶ Builder (push:main) ─▶ opens 1 PR ─▶ CI + Reviewer run
+      ▲                                                        │
+      │                                          approved + CI green
+      │                                                        ▼
+      └──────────────  Auto-merge (squash, delete branch)  ◀───┘
+```
+
+Each step's GitHub action is performed with a **dedicated PAT
+(`AGENT_GH_TOKEN`)**, not the default `GITHUB_TOKEN`. This is essential: GitHub
+suppresses workflow triggers for events made by `GITHUB_TOKEN`, so without the
+PAT a Builder-opened PR would never start CI/Reviewer and the loop would stall.
+Only **one PR is open at a time** (the Builder exits early if work is in flight),
+so dependent issues land in order.
 
 ## Labels and their meaning
 
