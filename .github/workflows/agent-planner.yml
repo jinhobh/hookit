@@ -39,6 +39,7 @@ jobs:
           # workflows, consistent with the other agents.
           github_token: ${{ secrets.AGENT_GH_TOKEN }}
           # Conservative tool surface: read files and run only `gh` for issues.
+          show_full_output: true
           claude_args: >-
             --allowedTools "Read,Glob,Grep,Bash(gh:*)"
           prompt: |
