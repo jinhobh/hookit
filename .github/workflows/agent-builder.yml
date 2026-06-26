@@ -5,14 +5,11 @@ name: Agent - Builder
 # Never pushes to main and never merges. See agents/builder.md.
 
 on:
+  # Event-driven (hybrid model): every merge to main kicks the next build, and
+  # the Reviewer dispatches this workflow when it requests changes. No idle cron.
   workflow_dispatch:
-  # Self-advancing loop: every merge to main kicks the next build. The cron is
-  # a backstop in case an event is missed.
   push:
     branches: [main]
-  schedule:
-    # Every 4 hours.
-    - cron: "0 */4 * * *"
 
 # Needs to push a branch, open a PR, and update issue/PR labels.
 permissions:
@@ -61,22 +58,31 @@ jobs:
           # Builder may edit files, run the local checks, git, and gh — but the
           # prompt and CLAUDE.md forbid pushing to main, merging, or weakening CI.
           claude_args: >-
-            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(ruff:*),Bash(mypy:*),Bash(pytest:*),Bash(pip install:*),Bash(git:*),Bash(gh issue:*),Bash(gh pr list:*),Bash(gh pr create:*),Bash(gh pr edit:*)"
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(ruff:*),Bash(mypy:*),Bash(pytest:*),Bash(pip install:*),Bash(git:*),Bash(gh issue:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr checkout:*),Bash(gh pr create:*),Bash(gh pr edit:*),Bash(gh pr comment:*),Bash(gh workflow run:*)"
           prompt: |
             You are the Builder agent for this repository.
 
             Read and follow agents/builder.md exactly, and obey CLAUDE.md.
 
             Procedure:
-            1. FIRST check for work already in flight: list open PRs
-               (`gh pr list --state open`). If ANY open PR is labeled
-               `agent:needs-review` or `agent:approved`, STOP immediately and
-               report "work in flight" — only one PR may be open at a time so
-               dependent issues build in order.
-            2. Otherwise find the OLDEST open issue labeled `agent:ready` and NOT
-               labeled `agent:in-progress` (prefer issues labeled
-               `agent:changes-needed`). If none exists, STOP and report "no ready
-               work".
+            1. FIRST inspect open PRs (`gh pr list --state open --json
+               number,headRefName,labels`). Exactly one agent PR may be open at
+               a time. Decide based on its labels:
+               a. A PR labeled `agent:changes-needed` is YOUR job — handle it and
+                  STOP afterward (do not start a new issue):
+                  - `gh pr checkout <n>`; read the Reviewer's feedback with
+                    `gh pr view <n> --comments`.
+                  - Address EVERY blocking point with new commits. Re-run all
+                    four checks. Push to the SAME branch (never force-push).
+                  - Remove `agent:changes-needed` and add `agent:needs-review`
+                    (`gh pr edit`), and update the PR's Verification section.
+               b. A PR labeled `agent:needs-review` or `agent:approved` means work
+                  is in flight — STOP immediately and report "work in flight".
+            2. If no agent PR is open, find the OLDEST open issue labeled
+               `agent:ready` and NOT `agent:in-progress`. If none exists, the
+               queue is empty: dispatch the Planner to refill it
+               (`gh workflow run agent-planner.yml`), then STOP and report "no
+               ready work — Planner dispatched".
             3. Label that ONE issue `agent:in-progress`.
             4. Create a branch `type/short-summary-<issue#>` (never work on main).
             5. Implement the smallest complete solution meeting every acceptance

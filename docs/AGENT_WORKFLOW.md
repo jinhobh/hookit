@@ -11,8 +11,8 @@ governing rules are in [`CLAUDE.md`](../CLAUDE.md); role prompts are in
 
 | Actor | Trigger | Writes code? | Merges? | Output |
 | --- | --- | --- | --- | --- |
-| Planner | daily cron + manual | No | No | New `agent:ready` issues |
-| Builder | push to main + every 4h cron + manual | Yes (one PR) | No | Branch + PR, `agent:needs-review` |
+| Planner | daily cron (queue refill) + Builder-dispatch when empty + manual | No | No | New `agent:ready` issues |
+| Builder | push to main + Reviewer-dispatch (on changes-needed) + manual | Yes (one PR) | No | Branch + PR, `agent:needs-review` |
 | Reviewer | PR events + manual | No | No | PR comment + `agent:approved`/`agent:changes-needed` |
 | CI | every PR / push to main | No | No | Pass/fail status checks |
 | Auto-merge | `agent:approved` added + manual | No | **Yes** (deterministic) | Squash-merges green, approved PRs |
@@ -30,17 +30,28 @@ governing rules are in [`CLAUDE.md`](../CLAUDE.md); role prompts are in
 ```
 merge to main ─▶ Builder (push:main) ─▶ opens 1 PR ─▶ CI + Reviewer run
       ▲                                                        │
-      │                                          approved + CI green
-      │                                                        ▼
-      └──────────────  Auto-merge (squash, delete branch)  ◀───┘
+      │                                  ┌─── approved + CI green
+      │                                  │                     │
+      │                                  ▼                     ▼
+      └──── Auto-merge (squash) ◀── approved          changes-needed
+                                                              │
+                                          Reviewer dispatches Builder to fix
+                                          the same PR ─▶ re-review ─▶ …
 ```
 
-Each step's GitHub action is performed with a **dedicated PAT
-(`AGENT_GH_TOKEN`)**, not the default `GITHUB_TOKEN`. This is essential: GitHub
-suppresses workflow triggers for events made by `GITHUB_TOKEN`, so without the
-PAT a Builder-opened PR would never start CI/Reviewer and the loop would stall.
-Only **one PR is open at a time** (the Builder exits early if work is in flight),
-so dependent issues land in order.
+The loop is **event-driven (hybrid model)**: there is no idle Builder cron.
+Merges, approvals, and change-requests each dispatch the next step; the only
+time-based trigger is a once-daily Planner that tops up the queue (the Builder
+also dispatches the Planner immediately if it ever finds the queue empty).
+
+Each step's GitHub action is performed with a **dedicated PAT (`AGENT_GH_TOKEN`)**,
+not the default `GITHUB_TOKEN`. This is essential: GitHub suppresses workflow
+triggers for events made by `GITHUB_TOKEN`, so without the PAT a Builder-opened
+PR would never start CI/Reviewer and the loop would stall. The PAT is a
+fine-grained token scoped to this repo with **Contents, Pull requests, Issues,
+and Actions** all set to *Read and write* (Actions is needed for the
+`gh workflow run` dispatches). Only **one PR is open at a time** (the Builder
+exits early if work is in flight), so dependent issues land in order.
 
 ## Labels and their meaning
 
@@ -100,19 +111,23 @@ least `risk:medium`.
 
 ## What happens when CI fails
 
-- The PR stays unmergeable (branch protection requires green CI).
-- The Reviewer should treat failing CI as an automatic `agent:changes-needed` and
-  point at the failing check.
-- On its next run, the Builder picks up the `agent:changes-needed` PR/issue,
-  fixes the cause, and pushes to the **same branch** (which re-triggers CI and
-  Reviewer). Builders must fix the root cause — never weaken or skip checks.
+- The PR is not auto-merged (auto-merge requires the CI check to be green).
+- The Reviewer treats failing CI as an automatic `agent:changes-needed` and
+  points at the failing check.
+- This dispatches the Builder (see below), which fixes the root cause and pushes
+  to the **same branch** (re-triggering CI and the Reviewer). Builders must fix
+  the cause — never weaken or skip checks.
 
 ## What happens when the Reviewer requests changes
 
-- The PR is labeled `agent:changes-needed`; the issue returns to the Builder's
-  attention. The Builder addresses every point in a new commit on the same
-  branch, updates the PR body's Verification section, and re-requests review by
-  re-applying `agent:needs-review` (removing `agent:changes-needed`).
+- The Reviewer labels the PR `agent:changes-needed` (removing `agent:approved`)
+  and **dispatches the Builder** (`gh workflow run agent-builder.yml`).
+- The Builder sees the `agent:changes-needed` PR is its top priority: it checks
+  out that branch, addresses **every** blocking point in new commits, re-runs the
+  four checks, pushes to the same branch, updates the PR's Verification section,
+  then swaps the label back to `agent:needs-review`.
+- Pushing to the PR branch re-triggers the Reviewer. The cycle repeats until the
+  Reviewer approves (→ auto-merge) — no human or cron needed.
 
 ## What happens when an agent is blocked
 
