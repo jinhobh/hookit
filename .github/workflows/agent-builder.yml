@@ -45,7 +45,11 @@ jobs:
       - name: Run Builder
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Auth via a Claude Pro/Max subscription token (generate locally with
+          # `claude setup-token`, store as the CLAUDE_CODE_OAUTH_TOKEN secret).
+          # To use a metered API key instead, swap this for:
+          #   anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           # Builder may edit files, run the local checks, git, and gh — but the
           # prompt and CLAUDE.md forbid pushing to main, merging, or weakening CI.

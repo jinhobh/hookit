@@ -137,7 +137,8 @@ who approves and merges PRs. Required via [`.github/CODEOWNERS`](.github/CODEOWN
 and branch protection. The owner should:
 
 1. Review and merge PRs that pass CI and Reviewer approval.
-2. Keep `ANTHROPIC_API_KEY` configured as an Actions secret.
+2. Keep the agent auth secret configured: `CLAUDE_CODE_OAUTH_TOKEN` (from a Claude
+   Pro/Max subscription via `claude setup-token`) or `ANTHROPIC_API_KEY`.
 3. Maintain branch protection (no force-push / no direct push to `main`).
 
 The owner should **not** need to hand-hold day-to-day development — the issue

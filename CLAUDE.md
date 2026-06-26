@@ -123,8 +123,9 @@ Every PR opened by an agent MUST include these sections:
 
 ## 9. Security rules
 
-- Never commit secrets. Secrets come from environment variables only; the GitHub
-  Actions secret is `ANTHROPIC_API_KEY`.
+- Never commit secrets. Secrets come from environment variables only. The agent
+  workflows authenticate with `CLAUDE_CODE_OAUTH_TOKEN` (a Claude Pro/Max
+  subscription token) or, alternatively, `ANTHROPIC_API_KEY`.
 - API keys and webhook signing secrets must be stored hashed/encrypted, never in
   plaintext logs. Never log full secrets, tokens, or signatures.
 - Sign outbound webhooks with HMAC-SHA256; verify signatures with a constant-time
