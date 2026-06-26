@@ -1,0 +1,7 @@
+# Code ownership — requires human review before merge.
+#
+# The human owner is the final merge gate for the entire repository. Combined
+# with branch protection ("require review from Code Owners"), this guarantees no
+# agent can merge its own or another agent's work.
+
+* @jinhobh

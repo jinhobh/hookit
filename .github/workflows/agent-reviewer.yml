@@ -1,0 +1,64 @@
+name: Agent - Reviewer
+
+# Review-only. On PR events (and manual dispatch) it reviews the diff and labels
+# the PR `agent:approved` or `agent:changes-needed`. It edits no files, makes no
+# commits, and does not merge. See agents/reviewer.md.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+# Read code; comment on and label PRs. NO `contents: write` — review only.
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: agent-reviewer-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Run Reviewer agent
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Reviewer
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Read-only over files: no Edit/Write. Only `gh` commands that comment
+          # on / label the PR are permitted — never merge, edit, or push.
+          claude_args: >-
+            --allowedTools "Read,Glob,Grep,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr review:*),Bash(gh pr edit:*),Bash(gh issue view:*)"
+          prompt: |
+            You are the Reviewer agent for this repository. PR number:
+            ${{ github.event.pull_request.number }} (if empty, review the most
+            recently updated open PR).
+
+            Read and follow agents/reviewer.md exactly, and judge against
+            CLAUDE.md and docs/QUALITY_BAR.md plus the linked issue's acceptance
+            criteria.
+
+            You are REVIEW-ONLY: do NOT edit files, commit, push, or merge.
+
+            Procedure:
+            1. Read the PR diff (`gh pr diff`) and the linked issue.
+            2. Assess correctness, tests, scope, security, reliability, and
+               maintainability. Confirm CI is green (treat failing/missing checks
+               as automatic changes-needed).
+            3. Leave ONE specific, actionable PR comment (cite file/line, explain
+               why, suggest a fix; separate blocking issues from nits).
+            4. Apply exactly one label: `agent:approved` if it meets the bar with
+               no blocking concerns, otherwise `agent:changes-needed` (and remove
+               `agent:approved` if present).
+
+            Remember: the human owner is the final merge gate. When risk is high
+            or the call is borderline, say so explicitly. Never rubber-stamp.
