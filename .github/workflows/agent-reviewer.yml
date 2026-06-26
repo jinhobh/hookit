@@ -43,7 +43,7 @@ jobs:
           # Read-only over files: no Edit/Write. Only `gh` commands that comment
           # on / label the PR are permitted — never merge, edit, or push.
           claude_args: >-
-            --allowedTools "Read,Glob,Grep,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr review:*),Bash(gh pr edit:*),Bash(gh issue view:*),Bash(gh workflow run:*)"
+            --allowedTools "Read,Glob,Grep,Bash(gh:*)"
           prompt: |
             You are the Reviewer agent for this repository. PR number:
             ${{ github.event.pull_request.number }} (if empty, review the most

@@ -5,11 +5,10 @@ name: Agent - Builder
 # Never pushes to main and never merges. See agents/builder.md.
 
 on:
-  # Event-driven (hybrid model): every merge to main kicks the next build, and
-  # the Reviewer dispatches this workflow when it requests changes. No idle cron.
+  # Event-driven (hybrid model): the Builder is dispatched after each merge (by
+  # auto-merge.yml) and when the Reviewer requests changes. Triggered via
+  # workflow_dispatch because claude-code-action does not support `push` events.
   workflow_dispatch:
-  push:
-    branches: [main]
 
 # Needs to push a branch, open a PR, and update issue/PR labels.
 permissions:
@@ -58,7 +57,7 @@ jobs:
           # Builder may edit files, run the local checks, git, and gh — but the
           # prompt and CLAUDE.md forbid pushing to main, merging, or weakening CI.
           claude_args: >-
-            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(ruff:*),Bash(mypy:*),Bash(pytest:*),Bash(pip install:*),Bash(git:*),Bash(gh issue:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr checkout:*),Bash(gh pr create:*),Bash(gh pr edit:*),Bash(gh pr comment:*),Bash(gh workflow run:*)"
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(ruff:*),Bash(mypy:*),Bash(pytest:*),Bash(pip:*),Bash(python:*),Bash(git:*),Bash(gh:*)"
           prompt: |
             You are the Builder agent for this repository.
 

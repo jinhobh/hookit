@@ -12,7 +12,7 @@ governing rules are in [`CLAUDE.md`](../CLAUDE.md); role prompts are in
 | Actor | Trigger | Writes code? | Merges? | Output |
 | --- | --- | --- | --- | --- |
 | Planner | daily cron (queue refill) + Builder-dispatch when empty + manual | No | No | New `agent:ready` issues |
-| Builder | push to main + Reviewer-dispatch (on changes-needed) + manual | Yes (one PR) | No | Branch + PR, `agent:needs-review` |
+| Builder | auto-merge dispatch (after each merge) + Reviewer-dispatch (on changes-needed) + manual | Yes (one PR) | No | Branch + PR, `agent:needs-review` |
 | Reviewer | PR events + manual | No | No | PR comment + `agent:approved`/`agent:changes-needed` |
 | CI | every PR / push to main | No | No | Pass/fail status checks |
 | Auto-merge | `agent:approved` added + manual | No | **Yes** (deterministic) | Squash-merges green, approved PRs |
@@ -28,7 +28,7 @@ governing rules are in [`CLAUDE.md`](../CLAUDE.md); role prompts are in
 ### The self-advancing loop
 
 ```
-merge to main ─▶ Builder (push:main) ─▶ opens 1 PR ─▶ CI + Reviewer run
+auto-merge ─dispatch─▶ Builder ─▶ opens 1 PR ─▶ CI + Reviewer run
       ▲                                                        │
       │                                  ┌─── approved + CI green
       │                                  │                     │
