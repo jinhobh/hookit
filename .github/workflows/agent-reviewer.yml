@@ -42,6 +42,7 @@ jobs:
           github_token: ${{ secrets.AGENT_GH_TOKEN }}
           # Read-only over files: no Edit/Write. Only `gh` commands that comment
           # on / label the PR are permitted — never merge, edit, or push.
+          show_full_output: true
           claude_args: >-
             --allowedTools "Read,Glob,Grep,Bash(gh:*)"
           prompt: |

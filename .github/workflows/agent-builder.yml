@@ -56,6 +56,7 @@ jobs:
           github_token: ${{ secrets.AGENT_GH_TOKEN }}
           # Builder may edit files, run the local checks, git, and gh — but the
           # prompt and CLAUDE.md forbid pushing to main, merging, or weakening CI.
+          show_full_output: true
           claude_args: >-
             --allowedTools "Read,Glob,Grep,Edit,Write,Bash(ruff:*),Bash(mypy:*),Bash(pytest:*),Bash(pip:*),Bash(python:*),Bash(git:*),Bash(gh:*)"
           prompt: |
