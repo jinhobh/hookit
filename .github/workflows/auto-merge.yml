@@ -50,15 +50,27 @@ jobs:
       - name: Wait for CI to pass
         if: env.approved == 'true'
         run: |
+          # Poll the canonical check-runs API for the PR head commit. We query by
+          # check name directly (not `gh pr checks`, whose JSON came back empty
+          # while this workflow's own check was in-flight). `status` is
+          # queued/in_progress/completed; `conclusion` is success/failure/... and
+          # is null until completed. Re-read the head SHA each loop in case the
+          # Builder pushes a new commit.
+          CHECK="Lint, type-check, test"
           for i in $(seq 1 40); do
-            state=$(gh pr checks "$PR" --repo "$REPO" --json name,state \
-              -q '.[] | select(.name=="Lint, type-check, test") | .state' 2>/dev/null | head -1)
-            case "$state" in
-              SUCCESS) echo "CI passed."; exit 0 ;;
-              FAILURE|ERROR|CANCELLED|TIMED_OUT|ACTION_REQUIRED|STARTUP_FAILURE)
-                echo "CI did not pass (state=$state) — leaving PR for the Builder/Reviewer."; exit 1 ;;
-              *) echo "[$i] CI state=${state:-pending}; waiting..."; sleep 15 ;;
-            esac
+            sha=$(gh pr view "$PR" --repo "$REPO" --json headRefOid -q '.headRefOid')
+            read -r status conclusion < <(gh api \
+              "repos/$REPO/commits/$sha/check-runs" \
+              -q '.check_runs[] | select(.name=="'"$CHECK"'") | "\(.status) \(.conclusion)"' \
+              2>/dev/null | head -1)
+            if [ "$status" = "completed" ]; then
+              case "$conclusion" in
+                success) echo "CI passed."; exit 0 ;;
+                *) echo "CI did not pass (conclusion=$conclusion) — leaving PR for the Builder/Reviewer."; exit 1 ;;
+              esac
+            fi
+            echo "[$i] CI status=${status:-not-found} conclusion=${conclusion:-none}; waiting..."
+            sleep 15
           done
           echo "Timed out waiting for CI."; exit 1
 
