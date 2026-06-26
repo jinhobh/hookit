@@ -7,9 +7,9 @@ In CI a Postgres service container is started before this suite runs.
 
 from __future__ import annotations
 
+from app.db.session import SessionLocal, get_session
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import sessionmaker
 
 
 def test_engine_select_one(db_engine: Engine) -> None:
@@ -22,13 +22,25 @@ def test_engine_select_one(db_engine: Engine) -> None:
 
 
 def test_session_local_select_one(db_engine: Engine) -> None:
-    """SessionLocal produces a usable Session that can execute a query."""
-    session_factory = sessionmaker(bind=db_engine, autocommit=False, autoflush=False)
-    session = session_factory()
+    """SessionLocal (the application's session factory) can execute a query."""
+    session = SessionLocal()
     try:
         result = session.execute(text("SELECT 1"))
         row = result.fetchone()
     finally:
         session.close()
+    assert row is not None
+    assert row[0] == 1
+
+
+def test_get_session(db_engine: Engine) -> None:
+    """get_session yields a usable Session and closes it on generator exit."""
+    gen = get_session()
+    session = next(gen)
+    try:
+        result = session.execute(text("SELECT 1"))
+        row = result.fetchone()
+    finally:
+        gen.close()
     assert row is not None
     assert row[0] == 1

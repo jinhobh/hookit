@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.config import get_settings
 
 # Module-level engine — created once and reused across the process lifetime.
-engine = create_engine(get_settings().database_url)
+# pool_pre_ping=True avoids silent stale-connection errors after idle periods.
+engine = create_engine(get_settings().database_url, pool_pre_ping=True)
 
 # Session factory bound to the module-level engine.
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
