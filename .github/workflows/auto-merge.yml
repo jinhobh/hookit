@@ -62,8 +62,9 @@ jobs:
           done
           echo "Timed out waiting for CI."; exit 1
 
-      - name: Squash-merge
+      - name: Squash-merge and start the next build
         if: env.approved == 'true'
         run: |
           gh pr merge "$PR" --repo "$REPO" --squash --delete-branch
-          echo "Merged PR #$PR; the push to main will trigger the next Builder run."
+          echo "Merged PR #$PR. Dispatching the Builder for the next issue."
+          gh workflow run agent-builder.yml --repo "$REPO"

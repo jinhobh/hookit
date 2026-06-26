@@ -5,11 +5,10 @@ name: Agent - Builder
 # Never pushes to main and never merges. See agents/builder.md.
 
 on:
-  # Event-driven (hybrid model): every merge to main kicks the next build, and
-  # the Reviewer dispatches this workflow when it requests changes. No idle cron.
+  # Event-driven (hybrid model): the Builder is dispatched after each merge (by
+  # auto-merge.yml) and when the Reviewer requests changes. Triggered via
+  # workflow_dispatch because claude-code-action does not support `push` events.
   workflow_dispatch:
-  push:
-    branches: [main]
 
 # Needs to push a branch, open a PR, and update issue/PR labels.
 permissions:
