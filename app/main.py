@@ -11,6 +11,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from app.core.config import get_settings
+from app.routers import me
 
 settings = get_settings()
 
@@ -19,6 +20,9 @@ app = FastAPI(
     version="0.1.0",
     description="Reliable Webhook Delivery Platform — backend service.",
 )
+
+
+app.include_router(me.router)
 
 
 @app.get("/health", tags=["system"])
