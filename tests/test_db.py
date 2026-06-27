@@ -22,7 +22,11 @@ def test_engine_select_one(db_engine: Engine) -> None:
 
 
 def test_session_local_select_one(db_engine: Engine) -> None:
-    """SessionLocal (the application's session factory) can execute a query."""
+    """SessionLocal (the application's session factory) can execute a query.
+
+    db_engine is not used in the body; it exists solely to trigger the skip
+    when Postgres is unreachable (see conftest.py).
+    """
     session = SessionLocal()
     try:
         result = session.execute(text("SELECT 1"))
@@ -34,7 +38,11 @@ def test_session_local_select_one(db_engine: Engine) -> None:
 
 
 def test_get_session(db_engine: Engine) -> None:
-    """get_session yields a usable Session and closes it on generator exit."""
+    """get_session yields a usable Session and closes it on generator exit.
+
+    db_engine is not used in the body; it exists solely to trigger the skip
+    when Postgres is unreachable (see conftest.py).
+    """
     gen = get_session()
     session = next(gen)
     try:
