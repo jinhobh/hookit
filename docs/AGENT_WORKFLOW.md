@@ -49,9 +49,13 @@ not the default `GITHUB_TOKEN`. This is essential: GitHub suppresses workflow
 triggers for events made by `GITHUB_TOKEN`, so without the PAT a Builder-opened
 PR would never start CI/Reviewer and the loop would stall. The PAT is a
 fine-grained token scoped to this repo with **Contents, Pull requests, Issues,
-and Actions** all set to *Read and write* (Actions is needed for the
-`gh workflow run` dispatches). Only **one PR is open at a time** (the Builder
-exits early if work is in flight), so dependent issues land in order.
+Actions, and Workflows** all set to *Read and write*. Actions (read) is how the
+Reviewer and `auto-merge` read CI status — via the Actions runs API, since
+fine-grained PATs have no "Checks" permission and `gh pr checks` returns 403;
+Actions (write) covers the `gh workflow run` dispatches. Workflows (write) lets
+the Builder edit files under `.github/workflows/` (e.g. add a CI service). Only
+**one PR is open at a time** (the Builder exits early if work is in flight), so
+dependent issues land in order.
 
 ## Labels and their meaning
 
