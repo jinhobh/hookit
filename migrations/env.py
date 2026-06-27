@@ -15,6 +15,7 @@ if config.config_file_name is not None:
 # Override the SQLAlchemy URL from application settings so that Alembic always
 # uses the same DATABASE_URL as the running application, regardless of what is
 # written in alembic.ini.
+import app.models  # noqa: F401, E402 — registers all ORM models with Base.metadata
 from app.core.config import get_settings  # noqa: E402
 from app.db.base import Base  # noqa: E402
 
