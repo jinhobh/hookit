@@ -27,10 +27,10 @@ def test_session_local_select_one(db_engine: Engine) -> None:
     try:
         result = session.execute(text("SELECT 1"))
         row = result.fetchone()
+        assert row is not None
+        assert row[0] == 1
     finally:
         session.close()
-    assert row is not None
-    assert row[0] == 1
 
 
 def test_get_session(db_engine: Engine) -> None:
@@ -40,7 +40,7 @@ def test_get_session(db_engine: Engine) -> None:
     try:
         result = session.execute(text("SELECT 1"))
         row = result.fetchone()
+        assert row is not None
+        assert row[0] == 1
     finally:
         gen.close()
-    assert row is not None
-    assert row[0] == 1
