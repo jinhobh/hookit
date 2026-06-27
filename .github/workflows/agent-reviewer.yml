@@ -60,7 +60,14 @@ jobs:
             1. Read the PR diff (`gh pr diff`) and the linked issue.
             2. Assess correctness, tests, scope, security, reliability, and
                maintainability. Confirm CI is green (treat failing/missing checks
-               as automatic changes-needed).
+               as automatic changes-needed). To read CI status, use the Actions
+               API — NOT `gh pr checks`, `gh pr view --json statusCheckRollup`, or
+               the check-runs/statuses endpoints, which return 403 with this
+               token. Get the head SHA with
+               `gh pr view <n> --json headRefOid -q .headRefOid`, then:
+               `gh run list --repo <owner/repo> --commit <sha> --workflow ci.yml
+               --json status,conclusion,headSha`. CI is green only when the CI
+               run is status=completed AND conclusion=success.
             3. Leave ONE specific, actionable PR comment (cite file/line, explain
                why, suggest a fix; separate blocking issues from nits).
             4. Apply exactly one label: `agent:approved` if it meets the bar with

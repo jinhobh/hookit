@@ -50,19 +50,21 @@ jobs:
       - name: Wait for CI to pass
         if: env.approved == 'true'
         run: |
-          # Poll the canonical check-runs API for the PR head commit. We query by
-          # check name directly (not `gh pr checks`, whose JSON came back empty
-          # while this workflow's own check was in-flight). `status` is
-          # queued/in_progress/completed; `conclusion` is success/failure/... and
-          # is null until completed. Re-read the head SHA each loop in case the
-          # Builder pushes a new commit.
-          CHECK="Lint, type-check, test"
+          # Read CI status from the Actions runs API (needs only Actions: Read,
+          # which AGENT_GH_TOKEN has). We deliberately avoid `gh pr checks` and
+          # the check-runs/statuses APIs — those require a "Checks"/"Commit
+          # statuses" permission that fine-grained PATs gate separately and that
+          # returned 403, silently stalling this wait. Match the CI workflow by
+          # file path; `status` is queued/in_progress/completed and `conclusion`
+          # is success/failure/... (null until completed). Re-read the head SHA
+          # each loop in case the Builder pushes a new commit.
+          CI_PATH=".github/workflows/ci.yml"
           for i in $(seq 1 40); do
             sha=$(gh pr view "$PR" --repo "$REPO" --json headRefOid -q '.headRefOid')
             read -r status conclusion < <(gh api \
-              "repos/$REPO/commits/$sha/check-runs" \
-              -q '.check_runs[] | select(.name=="'"$CHECK"'") | "\(.status) \(.conclusion)"' \
-              2>/dev/null | head -1)
+              "repos/$REPO/actions/runs?head_sha=$sha&event=pull_request" \
+              -q '.workflow_runs[] | select(.path=="'"$CI_PATH"'") | "\(.status) \(.conclusion)"' \
+              | head -1)
             if [ "$status" = "completed" ]; then
               case "$conclusion" in
                 success) echo "CI passed."; exit 0 ;;
