@@ -11,7 +11,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from app.core.config import get_settings
-from app.routers import me
+from app.routers import endpoints, me
 
 settings = get_settings()
 
@@ -23,6 +23,7 @@ app = FastAPI(
 
 
 app.include_router(me.router)
+app.include_router(endpoints.router)
 
 
 @app.get("/health", tags=["system"])

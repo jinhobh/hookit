@@ -50,6 +50,16 @@ class Settings(BaseSettings):
         description="SQLAlchemy database URL (psycopg v3 driver).",
     )
 
+    # --- Endpoint secret encryption ----------------------------------------
+    # URL-safe base64-encoded 32-byte Fernet key used to encrypt webhook signing
+    # secrets at rest.  Must be overridden in staging/production with a secret
+    # value sourced from a secrets manager.  The default is a zero-byte key
+    # suitable for local development only — never use it in production.
+    endpoint_secret_key: str = Field(
+        default="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        description="Fernet key (URL-safe base64, 32 bytes) for encrypting endpoint secrets.",
+    )
+
     # --- Delivery / worker defaults ---------------------------------------
     # These are intentionally present as placeholders so later phases have a
     # single, typed home for tuning. They are not yet consumed by any code.
