@@ -171,6 +171,9 @@ def test_api_key_cascade_deleted_with_project(db_session: Session) -> None:
 
     db_session.delete(project)
     db_session.flush()
+    # ON DELETE CASCADE removes the row in the DB, but the SQLAlchemy identity
+    # map still caches the instance.  Expire it so the next get() hits the DB.
+    db_session.expire_all()
 
     assert db_session.get(ApiKey, api_key_id) is None
 
