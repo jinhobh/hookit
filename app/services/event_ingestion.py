@@ -10,6 +10,7 @@ from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.delivery import Delivery, DeliveryStatus
@@ -43,6 +44,12 @@ def ingest_event(
     - Same key + same body → return cached (event_id, queued_deliveries), no-op.
     - Same key + different body → raise HTTP 409.
     - First request → create, flush, and return.
+
+    Race condition: two concurrent requests can both pass the initial lookup before
+    either commits.  The losing insert hits the unique constraint on
+    ``idempotency_records``.  A savepoint wraps all three inserts (Event, Deliveries,
+    IdempotencyRecord) so the outer transaction survives — the savepoint is rolled
+    back, the winning record is re-read, and its cached response is returned.
     """
     request_hash = _body_hash(event_type, payload)
 
@@ -63,15 +70,17 @@ def ingest_event(
             return existing.event_id, existing.queued_deliveries
 
     now = datetime.now(UTC)
+    # Pre-generate UUID so Delivery rows reference it without an early flush.
+    event_id = uuid.uuid4()
 
     event = Event(
+        id=event_id,
         project_id=project_id,
         type=event_type,
         payload=payload,
         idempotency_key=idempotency_key,
     )
     session.add(event)
-    session.flush()  # populate event.id
 
     active_endpoints = list(
         session.execute(
@@ -85,7 +94,7 @@ def ingest_event(
 
     deliveries = [
         Delivery(
-            event_id=event.id,
+            event_id=event_id,
             endpoint_id=ep.id,
             status=DeliveryStatus.pending,
             attempt_count=0,
@@ -98,14 +107,36 @@ def ingest_event(
     queued_count = len(deliveries)
 
     if idempotency_key is not None:
-        record = IdempotencyRecord(
-            project_id=project_id,
-            idempotency_key=idempotency_key,
-            event_id=event.id,
-            queued_deliveries=queued_count,
-            request_hash=request_hash,
-        )
-        session.add(record)
+        # Savepoint wraps all three inserts.  If a concurrent request already
+        # committed the same (project_id, idempotency_key), the unique constraint
+        # raises IntegrityError.  Rolling back to the savepoint keeps the outer
+        # transaction alive so we can re-read the winning record and return it.
+        nested = session.begin_nested()
+        try:
+            record = IdempotencyRecord(
+                project_id=project_id,
+                idempotency_key=idempotency_key,
+                event_id=event_id,
+                queued_deliveries=queued_count,
+                request_hash=request_hash,
+            )
+            session.add(record)
+            nested.commit()  # flush Event + Deliveries + IdempotencyRecord; release savepoint
+        except IntegrityError:
+            nested.rollback()  # undo all three inserts; outer transaction stays alive
+            existing = session.execute(
+                select(IdempotencyRecord).where(
+                    IdempotencyRecord.project_id == project_id,
+                    IdempotencyRecord.idempotency_key == idempotency_key,
+                )
+            ).scalar_one()
+            if existing.request_hash != request_hash:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Idempotency-Key reused with a different request body",
+                ) from None
+            return existing.event_id, existing.queued_deliveries
+    else:
+        session.flush()
 
-    session.flush()
-    return event.id, queued_count
+    return event_id, queued_count

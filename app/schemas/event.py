@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any
 
@@ -26,8 +27,6 @@ class EventCreate(BaseModel):
     @field_validator("payload")
     @classmethod
     def payload_size(cls, v: dict[str, Any]) -> dict[str, Any]:
-        import json
-
         raw = json.dumps(v, separators=(",", ":"))
         if len(raw.encode()) > _MAX_PAYLOAD_BYTES:
             raise ValueError(f"payload must not exceed {_MAX_PAYLOAD_BYTES} bytes")

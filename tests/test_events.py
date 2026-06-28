@@ -229,6 +229,64 @@ def test_idempotent_replay_does_not_create_duplicates(
 
 
 # ---------------------------------------------------------------------------
+# Idempotency — concurrent insert race (savepoint recovery)
+# ---------------------------------------------------------------------------
+
+
+def test_idempotency_savepoint_recovers_on_concurrent_insert(
+    client: TestClient,
+    project_with_endpoint: tuple[Project, str],
+    ev_db_session: Session,
+) -> None:
+    """Savepoint catches IntegrityError when two requests race past the initial lookup.
+
+    The "loser" request has already passed the guard (initial lookup returned None)
+    before the "winner" committed.  We simulate this by patching the first
+    ``session.execute`` call to return None, forcing the savepoint recovery code path.
+    The loser must return the winner's event_id rather than a 500.
+    """
+    from unittest.mock import MagicMock, patch
+
+    _, key = project_with_endpoint
+
+    # Winner: commit an IdempotencyRecord normally.
+    first_resp = client.post(
+        "/events",
+        json=_VALID_BODY,
+        headers={**_auth(key), "Idempotency-Key": "concurrent-key"},
+    )
+    assert first_resp.status_code == 201
+    first_data = first_resp.json()
+
+    # Loser: bypass the initial lookup (as if it ran before the winner committed)
+    # so ingest_event tries a fresh insert and hits the unique constraint.
+    original_execute = ev_db_session.execute
+    select_calls: list[int] = [0]
+
+    def patched_execute(stmt, *args, **kwargs):  # type: ignore[no-untyped-def]
+        select_calls[0] += 1
+        if select_calls[0] == 1:
+            # Pretend the initial IdempotencyRecord lookup saw nothing.
+            mock_result = MagicMock()
+            mock_result.scalar_one_or_none.return_value = None
+            return mock_result
+        return original_execute(stmt, *args, **kwargs)
+
+    with patch.object(ev_db_session, "execute", side_effect=patched_execute):
+        second_resp = client.post(
+            "/events",
+            json=_VALID_BODY,
+            headers={**_auth(key), "Idempotency-Key": "concurrent-key"},
+        )
+
+    assert second_resp.status_code == 201
+    second_data = second_resp.json()
+    # Savepoint recovery: loser returns the winner's cached response, not a 500.
+    assert second_data["event_id"] == first_data["event_id"]
+    assert second_data["queued_deliveries"] == first_data["queued_deliveries"]
+
+
+# ---------------------------------------------------------------------------
 # Idempotency — conflict (same key + different body → 409)
 # ---------------------------------------------------------------------------
 
