@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -12,6 +13,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 from app.models.endpoint import Endpoint
 from app.models.event import Event
+
+if TYPE_CHECKING:
+    from app.models.delivery_attempt import DeliveryAttempt
 
 
 def _utcnow() -> datetime:
@@ -58,8 +62,14 @@ class Delivery(Base):
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )
 
-    event: Mapped[Event] = relationship("Event")
+    event: Mapped[Event] = relationship("Event", back_populates="deliveries")
     endpoint: Mapped[Endpoint] = relationship("Endpoint")
+    attempts: Mapped[list[DeliveryAttempt]] = relationship(
+        "DeliveryAttempt",
+        back_populates="delivery",
+        order_by="DeliveryAttempt.attempt_number",
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self) -> str:
         return f"Delivery(id={self.id!r}, status={self.status!r})"

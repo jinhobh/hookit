@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB
@@ -11,6 +12,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.models.project import Project
+
+if TYPE_CHECKING:
+    from app.models.delivery import Delivery
 
 
 def _utcnow() -> datetime:
@@ -38,6 +42,9 @@ class Event(Base):
     )
 
     project: Mapped[Project] = relationship("Project")
+    deliveries: Mapped[list[Delivery]] = relationship(
+        "Delivery", back_populates="event", order_by="Delivery.created_at"
+    )
 
     def __repr__(self) -> str:
         return f"Event(id={self.id!r}, type={self.type!r})"
