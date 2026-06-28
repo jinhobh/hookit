@@ -42,6 +42,15 @@ class DeliveryResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DeliveryPageResponse(BaseModel):
+    """Paginated list of deliveries returned by GET /deliveries."""
+
+    items: list[DeliveryResponse]
+    next_cursor: str | None
+
+    model_config = {"from_attributes": True}
+
+
 class EventDetailResponse(BaseModel):
     """Event with its associated deliveries, returned by GET /events/{id}."""
 
