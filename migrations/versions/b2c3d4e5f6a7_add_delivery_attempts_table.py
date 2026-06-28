@@ -42,6 +42,11 @@ def upgrade() -> None:
             name="fk_delivery_attempts_delivery_id",
         ),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint(
+            "delivery_id",
+            "attempt_number",
+            name="uq_delivery_attempts_delivery_id_attempt_number",
+        ),
     )
     op.create_index("ix_delivery_attempts_delivery_id", "delivery_attempts", ["delivery_id"])
 

@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -27,6 +27,13 @@ class DeliveryAttempt(Base):
     """
 
     __tablename__ = "delivery_attempts"
+    __table_args__ = (
+        UniqueConstraint(
+            "delivery_id",
+            "attempt_number",
+            name="uq_delivery_attempts_delivery_id_attempt_number",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     delivery_id: Mapped[uuid.UUID] = mapped_column(
@@ -41,7 +48,7 @@ class DeliveryAttempt(Base):
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
 
-    delivery: Mapped[Delivery] = relationship("Delivery", back_populates="attempts")  # noqa: F821
+    delivery: Mapped[Delivery] = relationship("Delivery", back_populates="attempts")
 
     def __repr__(self) -> str:
         return (

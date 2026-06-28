@@ -65,7 +65,10 @@ class Delivery(Base):
     event: Mapped[Event] = relationship("Event", back_populates="deliveries")
     endpoint: Mapped[Endpoint] = relationship("Endpoint")
     attempts: Mapped[list[DeliveryAttempt]] = relationship(
-        "DeliveryAttempt", back_populates="delivery", order_by="DeliveryAttempt.attempt_number"
+        "DeliveryAttempt",
+        back_populates="delivery",
+        order_by="DeliveryAttempt.attempt_number",
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self) -> str:
