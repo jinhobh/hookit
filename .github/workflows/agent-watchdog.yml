@@ -16,7 +16,6 @@ permissions:
   contents: read
   issues: write
   pull-requests: read
-  actions: write
 
 concurrency:
   group: agent-watchdog
@@ -61,9 +60,12 @@ jobs:
             fi
 
             # Age = time since the most recent `agent:in-progress` labeling.
-            labeled_at=$(gh api "repos/${repo}/issues/${n}/timeline?per_page=100" \
+            # --paginate + --slurp combines all pages into [[page1...],[page2,...]]
+            # so .[][] iterates every event across all pages.
+            labeled_at=$(gh api --paginate --slurp \
+              "repos/${repo}/issues/${n}/timeline" \
               -H "Accept: application/vnd.github+json" \
-              -q '[.[] | select(.event=="labeled" and .label.name=="agent:in-progress") | .created_at] | last')
+              -q '[.[][] | select(.event=="labeled" and .label.name=="agent:in-progress") | .created_at] | last')
 
             if [ -z "$labeled_at" ] || [ "$labeled_at" = "null" ]; then
               echo "#${n}: no agent:in-progress labeled event found — skipping."
@@ -79,7 +81,9 @@ jobs:
             fi
 
             echo "::warning::#${n}: stale agent:in-progress for ${age_min}m with no open PR — clearing label."
-            gh issue edit "$n" --repo "$repo" --remove-label "agent:in-progress"
+            gh issue edit "$n" --repo "$repo" \
+              --remove-label "agent:in-progress" \
+              --add-label "agent:ready"
             gh issue comment "$n" --repo "$repo" --body \
               "🤖 Watchdog: cleared a stale \`agent:in-progress\` label after ${age_min}m with no open PR (likely a Builder run that died mid-task). Re-queued for the Builder."
             cleared=$((cleared + 1))

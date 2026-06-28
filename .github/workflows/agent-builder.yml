@@ -49,7 +49,10 @@ jobs:
 
       - name: Run Builder
         id: builder
-        uses: anthropics/claude-code-action@v1
+        # Pinned to v1.0.159 — the Re-dispatch step below relies on JSON field names
+        # ("api_error_status", "error") observed in this version's execution log.
+        # When bumping, verify the log schema still exposes these fields.
+        uses: anthropics/claude-code-action@v1.0.159
         with:
           # Auth via a Claude Pro/Max subscription token (generate locally with
           # `claude setup-token`, store as the CLAUDE_CODE_OAUTH_TOKEN secret).
