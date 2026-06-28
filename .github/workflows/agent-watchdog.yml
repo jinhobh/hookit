@@ -1,0 +1,93 @@
+name: Agent - Watchdog
+
+# Recovers the autonomous loop when a Builder run dies mid-task (e.g. on an
+# Anthropic rate limit) after labeling an issue `agent:in-progress` but before
+# opening a PR. Such an issue is never re-picked by the Builder (its selection
+# skips `agent:in-progress`), so the loop silently stalls. This sweep clears
+# stale labels and re-dispatches the Builder. Runs on a schedule and on demand.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+# Needs to edit issue labels/comments and dispatch the Builder workflow.
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+  actions: write
+
+concurrency:
+  group: agent-watchdog
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: Clear stale in-progress labels
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.AGENT_GH_TOKEN }}
+      # An issue must be `agent:in-progress` for at least this long, with no open
+      # PR, before it counts as stale. Comfortably longer than a normal Builder
+      # run (~10 min) so we never clear a label out from under an active build.
+      STALE_MINUTES: "30"
+    steps:
+      - name: Sweep stale agent:in-progress issues
+        run: |
+          set -euo pipefail
+          repo="${GITHUB_REPOSITORY}"
+          now=$(date -u +%s)
+          cleared=0
+
+          # Head branches of all open PRs. Branch convention is `*-<issue#>`, so
+          # a matching branch means work is already in flight for that issue.
+          open_pr_branches=$(gh pr list --repo "$repo" --state open \
+            --json headRefName -q '.[].headRefName')
+
+          issues=$(gh issue list --repo "$repo" --state open \
+            --label "agent:in-progress" --json number -q '.[].number')
+
+          if [ -z "$issues" ]; then
+            echo "No issues labeled agent:in-progress — nothing to sweep."
+            exit 0
+          fi
+
+          for n in $issues; do
+            # Skip if an open PR already exists for this issue (work in flight).
+            if echo "$open_pr_branches" | grep -Eq -- "-${n}$"; then
+              echo "#${n}: open PR found — leaving in-progress."
+              continue
+            fi
+
+            # Age = time since the most recent `agent:in-progress` labeling.
+            labeled_at=$(gh api "repos/${repo}/issues/${n}/timeline?per_page=100" \
+              -H "Accept: application/vnd.github+json" \
+              -q '[.[] | select(.event=="labeled" and .label.name=="agent:in-progress") | .created_at] | last')
+
+            if [ -z "$labeled_at" ] || [ "$labeled_at" = "null" ]; then
+              echo "#${n}: no agent:in-progress labeled event found — skipping."
+              continue
+            fi
+
+            labeled_ts=$(date -u -d "$labeled_at" +%s)
+            age_min=$(( (now - labeled_ts) / 60 ))
+
+            if [ "$age_min" -lt "$STALE_MINUTES" ]; then
+              echo "#${n}: in-progress for ${age_min}m (< ${STALE_MINUTES}m) — still fresh."
+              continue
+            fi
+
+            echo "::warning::#${n}: stale agent:in-progress for ${age_min}m with no open PR — clearing label."
+            gh issue edit "$n" --repo "$repo" --remove-label "agent:in-progress"
+            gh issue comment "$n" --repo "$repo" --body \
+              "🤖 Watchdog: cleared a stale \`agent:in-progress\` label after ${age_min}m with no open PR (likely a Builder run that died mid-task). Re-queued for the Builder."
+            cleared=$((cleared + 1))
+          done
+
+          # If we re-queued anything, kick the Builder so the loop resumes — the
+          # loop is otherwise merge-driven and nothing would re-dispatch it.
+          if [ "$cleared" -gt 0 ]; then
+            echo "Re-queued ${cleared} issue(s); dispatching the Builder."
+            gh workflow run agent-builder.yml
+          fi
