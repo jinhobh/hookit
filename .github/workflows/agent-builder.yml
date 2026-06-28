@@ -9,6 +9,11 @@ on:
   # auto-merge.yml) and when the Reviewer requests changes. Triggered via
   # workflow_dispatch because claude-code-action does not support `push` events.
   workflow_dispatch:
+    inputs:
+      retry_count:
+        description: "Internal: rate-limit retry attempt (auto-set on re-dispatch; leave 0)."
+        required: false
+        default: "0"
 
 # Needs to push a branch, open a PR, and update issue/PR labels.
 permissions:
@@ -43,7 +48,11 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run Builder
-        uses: anthropics/claude-code-action@v1
+        id: builder
+        # Pinned to v1.0.159 — the Re-dispatch step below relies on JSON field names
+        # ("api_error_status", "error") observed in this version's execution log.
+        # When bumping, verify the log schema still exposes these fields.
+        uses: anthropics/claude-code-action@v1.0.159
         with:
           # Auth via a Claude Pro/Max subscription token (generate locally with
           # `claude setup-token`, store as the CLAUDE_CODE_OAUTH_TOKEN secret).
@@ -100,3 +109,48 @@ jobs:
             You must NOT merge any PR, NOT approve any PR, NOT push to main, and
             NOT force-push. If blocked, stop and comment on the issue describing
             the blocker instead of opening a broken PR.
+
+      # claude-code-action exits "success" even when Claude stops mid-task on an
+      # Anthropic rate limit (HTTP 429) — the run leaves no PR and, because the
+      # loop is merge-driven, nothing re-dispatches the Builder. Detect that case
+      # from the execution log and re-dispatch with a bounded, backed-off retry so
+      # the loop self-heals instead of silently stalling.
+      - name: Re-dispatch on rate limit
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GH_TOKEN }}
+          RETRY_COUNT: ${{ inputs.retry_count }}
+          EXECUTION_FILE: ${{ steps.builder.outputs.execution_file }}
+        run: |
+          set -euo pipefail
+          MAX_RETRIES=5
+
+          log="${EXECUTION_FILE:-}"
+          if [ -z "$log" ] || [ ! -f "$log" ]; then
+            log="${RUNNER_TEMP}/claude-execution-output.json"
+          fi
+          if [ ! -f "$log" ]; then
+            echo "No execution log found at '$log'; cannot inspect for rate limit."
+            exit 0
+          fi
+
+          if ! grep -Eq '"api_error_status":[[:space:]]*429|"error":[[:space:]]*"rate_limit"' "$log"; then
+            echo "No rate-limit termination detected."
+            exit 0
+          fi
+
+          retry="${RETRY_COUNT:-0}"
+          if [ "$retry" -ge "$MAX_RETRIES" ]; then
+            echo "::warning::Builder hit a rate limit and exhausted ${MAX_RETRIES} retries; not re-dispatching. Re-run manually once budget recovers."
+            exit 0
+          fi
+
+          next=$((retry + 1))
+          # Sleep before the job ends so the queued re-dispatch starts after a
+          # pause (the agent-builder concurrency group serializes runs, so the
+          # next run waits for this job regardless). Scaled, capped at 5 min.
+          backoff=$(( next * 60 ))
+          [ "$backoff" -gt 300 ] && backoff=300
+          echo "::warning::Builder stopped on a rate limit (attempt ${retry}). Backing off ${backoff}s then re-dispatching (attempt ${next}/${MAX_RETRIES})."
+          sleep "$backoff"
+          gh workflow run agent-builder.yml -f retry_count="${next}"
