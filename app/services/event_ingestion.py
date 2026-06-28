@@ -123,6 +123,8 @@ def ingest_event(
             session.add(record)
             nested.commit()  # flush Event + Deliveries + IdempotencyRecord; release savepoint
         except IntegrityError:
+            # Only uq_idempotency_records_project_key can fire here; FK constraints
+            # reference rows already committed before this savepoint opened.
             nested.rollback()  # undo all three inserts; outer transaction stays alive
             existing = session.execute(
                 select(IdempotencyRecord).where(
