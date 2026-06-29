@@ -259,7 +259,9 @@ def test_list_deliveries_returns_empty_for_no_deliveries(
     _, key = _make_project_and_key(dl_db_session, "project-list-dl-empty")
     resp = client.get("/deliveries", headers=_auth(key))
     assert resp.status_code == 200
-    assert resp.json() == []
+    data = resp.json()
+    assert data["items"] == []
+    assert data["next_cursor"] is None
 
 
 def test_list_deliveries_returns_project_deliveries(
@@ -273,8 +275,9 @@ def test_list_deliveries_returns_project_deliveries(
     resp = client.get("/deliveries", headers=_auth(key))
     assert resp.status_code == 200
     data = resp.json()
-    assert len(data) == 1
-    assert data[0]["id"] == str(delivery.id)
+    assert len(data["items"]) == 1
+    assert data["items"][0]["id"] == str(delivery.id)
+    assert data["next_cursor"] is None
 
 
 def test_list_deliveries_scoped_to_project(client: TestClient, dl_db_session: Session) -> None:
@@ -286,12 +289,118 @@ def test_list_deliveries_scoped_to_project(client: TestClient, dl_db_session: Se
 
     resp = client.get("/deliveries", headers=_auth(key1))
     assert resp.status_code == 200
-    assert resp.json() == []
+    data = resp.json()
+    assert data["items"] == []
+    assert data["next_cursor"] is None
 
 
 def test_list_deliveries_requires_auth(client: TestClient) -> None:
     resp = client.get("/deliveries")
     assert resp.status_code == 401
+
+
+def test_list_deliveries_default_page_structure(client: TestClient, dl_db_session: Session) -> None:
+    project, key = _make_project_and_key(dl_db_session, "project-dl-page-struct")
+    endpoint = _make_endpoint(dl_db_session, project.id)
+    event = _make_event(dl_db_session, project.id)
+    _make_delivery(dl_db_session, event, endpoint)
+
+    resp = client.get("/deliveries", headers=_auth(key))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "items" in data
+    assert "next_cursor" in data
+    assert isinstance(data["items"], list)
+
+
+def test_list_deliveries_custom_limit(client: TestClient, dl_db_session: Session) -> None:
+    project, key = _make_project_and_key(dl_db_session, "project-dl-limit")
+    endpoint = _make_endpoint(dl_db_session, project.id)
+    for _ in range(5):
+        event = _make_event(dl_db_session, project.id)
+        _make_delivery(dl_db_session, event, endpoint)
+
+    resp = client.get("/deliveries?limit=3", headers=_auth(key))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["items"]) == 3
+    assert data["next_cursor"] is not None
+
+
+def test_list_deliveries_cursor_pagination(client: TestClient, dl_db_session: Session) -> None:
+    project, key = _make_project_and_key(dl_db_session, "project-dl-cursor")
+    endpoint = _make_endpoint(dl_db_session, project.id)
+    for _ in range(5):
+        event = _make_event(dl_db_session, project.id)
+        _make_delivery(dl_db_session, event, endpoint)
+
+    page1 = client.get("/deliveries?limit=3", headers=_auth(key)).json()
+    assert len(page1["items"]) == 3
+    cursor = page1["next_cursor"]
+    assert cursor is not None
+
+    page2 = client.get(f"/deliveries?limit=3&cursor={cursor}", headers=_auth(key)).json()
+    assert len(page2["items"]) == 2
+    assert page2["next_cursor"] is None
+
+    page1_ids = {item["id"] for item in page1["items"]}
+    page2_ids = {item["id"] for item in page2["items"]}
+    assert page1_ids.isdisjoint(page2_ids)
+    assert len(page1_ids | page2_ids) == 5
+
+
+def test_list_deliveries_filter_by_status(client: TestClient, dl_db_session: Session) -> None:
+    project, key = _make_project_and_key(dl_db_session, "project-dl-filter-status")
+    endpoint = _make_endpoint(dl_db_session, project.id)
+
+    event1 = _make_event(dl_db_session, project.id)
+    pending_delivery = _make_delivery(dl_db_session, event1, endpoint)
+
+    event2 = _make_event(dl_db_session, project.id)
+    succeeded_delivery = _make_delivery(dl_db_session, event2, endpoint)
+    succeeded_delivery.status = DeliveryStatus.succeeded
+    dl_db_session.flush()
+
+    resp = client.get("/deliveries?status=pending", headers=_auth(key))
+    assert resp.status_code == 200
+    data = resp.json()
+    ids = {item["id"] for item in data["items"]}
+    assert str(pending_delivery.id) in ids
+    assert str(succeeded_delivery.id) not in ids
+
+    resp2 = client.get("/deliveries?status=succeeded", headers=_auth(key))
+    assert resp2.status_code == 200
+    data2 = resp2.json()
+    ids2 = {item["id"] for item in data2["items"]}
+    assert str(succeeded_delivery.id) in ids2
+    assert str(pending_delivery.id) not in ids2
+
+
+def test_list_deliveries_filter_by_endpoint_id(client: TestClient, dl_db_session: Session) -> None:
+    project, key = _make_project_and_key(dl_db_session, "project-dl-filter-ep")
+    endpoint1 = _make_endpoint(dl_db_session, project.id)
+    endpoint2 = _make_endpoint(dl_db_session, project.id)
+
+    event1 = _make_event(dl_db_session, project.id)
+    delivery1 = _make_delivery(dl_db_session, event1, endpoint1)
+
+    event2 = _make_event(dl_db_session, project.id)
+    delivery2 = _make_delivery(dl_db_session, event2, endpoint2)
+
+    resp = client.get(f"/deliveries?endpoint_id={endpoint1.id}", headers=_auth(key))
+    assert resp.status_code == 200
+    data = resp.json()
+    ids = {item["id"] for item in data["items"]}
+    assert str(delivery1.id) in ids
+    assert str(delivery2.id) not in ids
+
+
+def test_list_deliveries_invalid_cursor_returns_422(
+    client: TestClient, dl_db_session: Session
+) -> None:
+    _, key = _make_project_and_key(dl_db_session, "project-dl-bad-cursor")
+    resp = client.get("/deliveries?cursor=notavalidcursor", headers=_auth(key))
+    assert resp.status_code == 422
 
 
 # ---------------------------------------------------------------------------
