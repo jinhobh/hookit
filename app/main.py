@@ -1,40 +1,45 @@
-"""FastAPI application entrypoint.
-
-This is intentionally minimal: it exposes only a health endpoint. The webhook
-delivery product is built incrementally through the issue queue (see
-``docs/ROADMAP.md``). Do not add product logic here without a corresponding
-issue.
-"""
+"""FastAPI application entrypoint."""
 
 from __future__ import annotations
+
+import logging
 
 from fastapi import FastAPI
 
 from app.core.config import get_settings
 from app.routers import deliveries, endpoints, events, me
 
-settings = get_settings()
 
-app = FastAPI(
-    title=settings.app_name,
-    version="0.1.0",
-    description="Reliable Webhook Delivery Platform — backend service.",
-)
+def create_app() -> FastAPI:
+    """Create and configure the FastAPI application.
 
-
-app.include_router(me.router)
-app.include_router(endpoints.router)
-app.include_router(events.router)
-app.include_router(deliveries.router)
-
-
-@app.get("/health", tags=["system"])
-def health() -> dict[str, str]:
-    """Liveness/readiness probe.
-
-    Returns a static ``{"status": "ok"}`` payload. This endpoint must remain
-    dependency-free (no database calls) so it can be used as a basic liveness
-    check before infrastructure is provisioned.
+    Initialises structured logging before wiring up routers so that all
+    components share a consistent log format from the moment the app starts.
     """
+    settings = get_settings()
 
-    return {"status": "ok"}
+    logging.basicConfig(
+        level=settings.log_level.upper(),
+        format="level=%(levelname)s logger=%(name)s %(message)s",
+    )
+
+    application = FastAPI(
+        title=settings.app_name,
+        version="0.1.0",
+        description="Reliable Webhook Delivery Platform — backend service.",
+    )
+
+    application.include_router(me.router)
+    application.include_router(endpoints.router)
+    application.include_router(events.router)
+    application.include_router(deliveries.router)
+
+    @application.get("/health", tags=["system"])
+    def health() -> dict[str, str]:
+        """Liveness/readiness probe — no database calls."""
+        return {"status": "ok"}
+
+    return application
+
+
+app = create_app()

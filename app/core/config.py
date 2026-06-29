@@ -60,6 +60,12 @@ class Settings(BaseSettings):
         description="Fernet key (URL-safe base64, 32 bytes) for encrypting endpoint secrets.",
     )
 
+    # --- Logging -----------------------------------------------------------
+    log_level: str = Field(
+        default="INFO",
+        description="Logging level: DEBUG | INFO | WARNING | ERROR | CRITICAL.",
+    )
+
     # --- Delivery / worker defaults ---------------------------------------
     delivery_timeout_seconds: float = Field(
         default=10.0,
