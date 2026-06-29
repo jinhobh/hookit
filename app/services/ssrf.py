@@ -49,9 +49,7 @@ def validate_url_not_ssrf(url: str) -> None:
 
     blocked: bool
     if isinstance(addr, ipaddress.IPv4Address):
-        blocked = addr == ipaddress.IPv4Address("0.0.0.0") or any(
-            addr in net for net in _BLOCKED_V4_NETWORKS
-        )
+        blocked = addr.is_unspecified or any(addr in net for net in _BLOCKED_V4_NETWORKS)
     else:
         blocked = any(addr in net for net in _BLOCKED_V6_NETWORKS)
     if blocked:

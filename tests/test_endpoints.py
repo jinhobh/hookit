@@ -179,6 +179,16 @@ def test_create_endpoint_rejects_blank_event_type_string(
     assert resp.status_code == 422
 
 
+def test_create_endpoint_rejects_ssrf_url(client_a: TestClient, project_a_key: str) -> None:
+    resp = client_a.post(
+        "/endpoints",
+        json={"url": "http://127.0.0.1:9999/hook", "event_types": _VALID_TYPES},
+        headers=_auth(project_a_key),
+    )
+    assert resp.status_code == 422
+    assert "non-public address" in resp.json()["detail"]
+
+
 def test_create_endpoint_requires_auth(client_a: TestClient) -> None:
     resp = client_a.post(
         "/endpoints",
@@ -307,6 +317,22 @@ def test_patch_endpoint_rejects_empty_event_types(client_a: TestClient, project_
         headers=_auth(project_a_key),
     )
     assert resp.status_code == 422
+
+
+def test_patch_endpoint_rejects_ssrf_url(client_a: TestClient, project_a_key: str) -> None:
+    create = client_a.post(
+        "/endpoints",
+        json={"url": _VALID_URL, "event_types": _VALID_TYPES},
+        headers=_auth(project_a_key),
+    )
+    ep_id = create.json()["id"]
+    resp = client_a.patch(
+        f"/endpoints/{ep_id}",
+        json={"url": "http://10.0.0.1/hook"},
+        headers=_auth(project_a_key),
+    )
+    assert resp.status_code == 422
+    assert "non-public address" in resp.json()["detail"]
 
 
 def test_patch_endpoint_not_found(client_a: TestClient, project_a_key: str) -> None:
