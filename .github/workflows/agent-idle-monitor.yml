@@ -67,7 +67,7 @@ jobs:
 
           open_agent_prs=$(gh pr list --repo "$REPO" --state open \
             --json labels \
-            -q '[.[] | select(.labels[].name | startswith("agent:"))] | length')
+            -q '[.[] | select(any(.labels[]; .name | startswith("agent:")))] | length')
           if [ "${open_agent_prs:-0}" -gt 0 ]; then
             echo "An agent PR is open — work is in flight, leaving it to the loop."
             exit 0
