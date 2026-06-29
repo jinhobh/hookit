@@ -488,6 +488,31 @@ def test_failing_delivery_retries_then_dead_letters(wk_db_session: Session) -> N
     assert len(delivery.attempts) == max_attempts
 
 
+def test_process_delivery_ssrf_url_dead_letters_immediately(wk_db_session: Session) -> None:
+    """SSRF-blocked URL dead-letters on the first attempt without making an HTTP request."""
+    project = _make_project(wk_db_session, "process-ssrf")
+    secret = generate_endpoint_secret()
+    ep = _make_endpoint(wk_db_session, project.id, secret, url="http://10.0.0.1/hook")
+    event = _make_event(wk_db_session, project.id)
+    delivery = _make_delivery(wk_db_session, event, ep)
+    delivery.status = DeliveryStatus.in_flight
+    wk_db_session.flush()
+
+    transport = _MockTransport(status_code=200)
+    with httpx.Client(transport=transport) as client:
+        process_delivery(delivery, wk_db_session, client)
+
+    assert delivery.status == DeliveryStatus.dead_lettered
+    assert delivery.attempt_count == 1
+    assert len(transport.requests) == 0
+    wk_db_session.expire(delivery)
+    assert len(delivery.attempts) == 1
+    attempt: DeliveryAttempt = delivery.attempts[0]
+    assert attempt.response_status is None
+    assert attempt.error is not None
+    assert "non-public address" in attempt.error
+
+
 def test_expired_lease_delivery_is_recovered(wk_db_session: Session) -> None:
     """An IN_FLIGHT delivery with an expired lease is reset and re-claimed on the next run_once."""
     project = _make_project(wk_db_session, "lease-recovery")

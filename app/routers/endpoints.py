@@ -19,6 +19,7 @@ from app.schemas.endpoint import (
     EndpointUpdate,
 )
 from app.services.crypto import encrypt_secret, generate_endpoint_secret
+from app.services.ssrf import SSRFError, validate_url_not_ssrf
 
 router = APIRouter(prefix="/endpoints", tags=["endpoints"])
 
@@ -48,6 +49,10 @@ def create_endpoint(
     returned **once** in this response.  It will not appear in subsequent
     reads.
     """
+    try:
+        validate_url_not_ssrf(str(body.url))
+    except SSRFError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     plaintext_secret = generate_endpoint_secret()
     endpoint = Endpoint(
         project_id=project.id,
@@ -92,6 +97,10 @@ def update_endpoint(
     """Update url, event_types, or status of an endpoint owned by the project."""
     endpoint = _get_endpoint_or_404(endpoint_id, project, session)
     if body.url is not None:
+        try:
+            validate_url_not_ssrf(str(body.url))
+        except SSRFError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         endpoint.url = str(body.url)
     if body.event_types is not None:
         endpoint.event_types = body.event_types
