@@ -1,0 +1,93 @@
+name: Agent - Idle Monitor
+
+# Keeps the autonomous loop moving without manual jump-starts.
+#
+# The loop is otherwise event-driven (Builder dispatched on merge / changes-
+# needed). That chain has two dead-ends this monitor recovers from:
+#   A. The Builder empties the queue, dispatches the Planner, and stops. The
+#      Planner creates fresh `agent:ready` issues but dispatches nobody — so the
+#      new work sits idle until a human kicks the Builder.
+#   B. A Claude subscription rate limit exhausts the Builder's short bounded
+#      retries; the limit resets over hours, long after those retries give up.
+#
+# Each tick: detect idle, confirm there is Claude budget (no active cooldown),
+# then jumpstart — dispatch the Builder if there is ready work, or the Planner
+# if the queue is empty. The agent-watchdog sweep still owns stale in-progress
+# labels; this monitor stays out of that case.
+#
+# "Budget left?" note: a Claude subscription OAuth token exposes no usage-meter
+# API. The real signal is the 429 a run hits at the wall, which the Builder
+# records as the BUILDER_COOLDOWN_UNTIL repo variable. This monitor honors it.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+# Dispatch the Builder/Planner and read issues, PRs, and runs.
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+  actions: write
+
+concurrency:
+  group: agent-idle-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    name: Jumpstart the loop if idle and budget remains
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.AGENT_GH_TOKEN }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Detect idle and jumpstart
+        run: |
+          set -euo pipefail
+          now=$(date -u +%s)
+
+          # --- 1. Usage gate: respect a cooldown the Builder set after a 429. ---
+          cooldown=$(gh api "repos/${REPO}/actions/variables/BUILDER_COOLDOWN_UNTIL" \
+            -q '.value' 2>/dev/null || echo "")
+          if [ -n "$cooldown" ] && [ "$cooldown" != "null" ] && [ "$now" -lt "$cooldown" ]; then
+            mins=$(( (cooldown - now + 59) / 60 ))
+            echo "Claude budget cooling down for ~${mins}m (until $(date -u -d "@${cooldown}" +%FT%TZ)) — not dispatching."
+            exit 0
+          fi
+
+          # --- 2. In-flight gates: never pile onto work already moving. ---
+          active_runs=$(gh run list --repo "$REPO" --workflow=agent-builder.yml \
+            --json status -q '[.[] | select(.status=="queued" or .status=="in_progress")] | length')
+          if [ "${active_runs:-0}" -gt 0 ]; then
+            echo "A Builder run is already queued/in_progress — nothing to do."
+            exit 0
+          fi
+
+          open_agent_prs=$(gh pr list --repo "$REPO" --state open \
+            --json labels \
+            -q '[.[] | select(.labels[].name | startswith("agent:"))] | length')
+          if [ "${open_agent_prs:-0}" -gt 0 ]; then
+            echo "An agent PR is open — work is in flight, leaving it to the loop."
+            exit 0
+          fi
+
+          in_progress=$(gh issue list --repo "$REPO" --state open \
+            --label "agent:in-progress" --json number -q 'length')
+          if [ "${in_progress:-0}" -gt 0 ]; then
+            echo "An issue is agent:in-progress — the watchdog owns staleness here."
+            exit 0
+          fi
+
+          # --- 3. Idle: decide what to jumpstart. ---
+          ready=$(gh issue list --repo "$REPO" --state open \
+            --label "agent:ready" --json number -q 'length')
+
+          if [ "${ready:-0}" -gt 0 ]; then
+            echo "::notice::Loop idle with ${ready} ready issue(s) and budget available — dispatching the Builder."
+            gh workflow run agent-builder.yml --repo "$REPO"
+          else
+            echo "::notice::Loop idle and the ready queue is empty — dispatching the Planner to refill it."
+            gh workflow run agent-planner.yml --repo "$REPO"
+          fi

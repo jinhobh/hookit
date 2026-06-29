@@ -118,9 +118,29 @@ jobs:
           GH_TOKEN: ${{ secrets.AGENT_GH_TOKEN }}
           RETRY_COUNT: ${{ inputs.retry_count }}
           EXECUTION_FILE: ${{ steps.builder.outputs.execution_file }}
+          # How long to mark the Claude budget as exhausted after a 429 when the
+          # log carries no parseable reset. The idle-monitor reads this cooldown
+          # (repo variable BUILDER_COOLDOWN_UNTIL) before jumpstarting the loop.
+          RATE_LIMIT_COOLDOWN_MINUTES: "60"
         run: |
           set -euo pipefail
           MAX_RETRIES=5
+          repo="${GITHUB_REPOSITORY}"
+
+          # Best-effort write of the shared cooldown signal. Needs the PAT's
+          # "Variables: write" scope; if absent we degrade gracefully — the
+          # idle-monitor simply retries on its schedule instead of waiting.
+          set_cooldown() {  # $1 = epoch seconds until budget is presumed back
+            gh api -X PATCH "repos/${repo}/actions/variables/BUILDER_COOLDOWN_UNTIL" \
+              -f name=BUILDER_COOLDOWN_UNTIL -f value="$1" >/dev/null 2>&1 \
+            || gh api -X POST "repos/${repo}/actions/variables" \
+              -f name=BUILDER_COOLDOWN_UNTIL -f value="$1" >/dev/null 2>&1 \
+            || echo "::warning::Could not set BUILDER_COOLDOWN_UNTIL (PAT may lack Variables:write)."
+          }
+          clear_cooldown() {
+            gh api -X DELETE "repos/${repo}/actions/variables/BUILDER_COOLDOWN_UNTIL" \
+              >/dev/null 2>&1 || true
+          }
 
           log="${EXECUTION_FILE:-}"
           if [ -z "$log" ] || [ ! -f "$log" ]; then
@@ -132,9 +152,16 @@ jobs:
           fi
 
           if ! grep -Eq '"api_error_status":[[:space:]]*429|"error":[[:space:]]*"rate_limit"' "$log"; then
-            echo "No rate-limit termination detected."
+            echo "No rate-limit termination detected — clearing any stale cooldown."
+            clear_cooldown
             exit 0
           fi
+
+          # Rate-limited: publish a cooldown so the idle-monitor holds off until
+          # the budget should be back, rather than dispatching into the wall.
+          cooldown_until=$(date -u -d "+${RATE_LIMIT_COOLDOWN_MINUTES} minutes" +%s)
+          echo "Recording cooldown until $(date -u -d "@${cooldown_until}" +%FT%TZ)."
+          set_cooldown "$cooldown_until"
 
           retry="${RETRY_COUNT:-0}"
           if [ "$retry" -ge "$MAX_RETRIES" ]; then
