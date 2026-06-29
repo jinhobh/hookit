@@ -22,7 +22,8 @@ from app.models.endpoint import Endpoint, EndpointStatus
 from app.models.event import Event
 from app.models.project import Project
 from app.services.crypto import encrypt_secret, generate_endpoint_secret
-from app.worker.delivery_worker import claim_due_deliveries, process_delivery
+from app.worker.backoff import compute_next_attempt_at
+from app.worker.delivery_worker import claim_due_deliveries, process_delivery, run_once
 from app.worker.signing import build_signature_header, sign_payload
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
@@ -249,7 +250,7 @@ def test_process_delivery_2xx_marks_succeeded(wk_db_session: Session) -> None:
     assert delivery.attempt_count == 1
 
 
-def test_process_delivery_non_2xx_marks_failed(wk_db_session: Session) -> None:
+def test_process_delivery_non_2xx_schedules_retry(wk_db_session: Session) -> None:
     project = _make_project(wk_db_session, "process-503")
     secret = generate_endpoint_secret()
     ep = _make_endpoint(wk_db_session, project.id, secret)
@@ -262,8 +263,10 @@ def test_process_delivery_non_2xx_marks_failed(wk_db_session: Session) -> None:
     with httpx.Client(transport=transport) as client:
         process_delivery(delivery, wk_db_session, client)
 
-    assert delivery.status == DeliveryStatus.failed
+    # Under MAX_DELIVERY_ATTEMPTS: should retry (PENDING) with a future next_attempt_at
+    assert delivery.status == DeliveryStatus.pending
     assert delivery.attempt_count == 1
+    assert delivery.next_attempt_at > datetime.now(UTC)
 
 
 def test_process_delivery_writes_attempt_record(wk_db_session: Session) -> None:
@@ -288,7 +291,9 @@ def test_process_delivery_writes_attempt_record(wk_db_session: Session) -> None:
     assert attempt.error is None
 
 
-def test_process_delivery_network_error_writes_failed_attempt(wk_db_session: Session) -> None:
+def test_process_delivery_network_error_writes_attempt_and_schedules_retry(
+    wk_db_session: Session,
+) -> None:
     project = _make_project(wk_db_session, "process-net-err")
     secret = generate_endpoint_secret()
     ep = _make_endpoint(wk_db_session, project.id, secret)
@@ -300,7 +305,9 @@ def test_process_delivery_network_error_writes_failed_attempt(wk_db_session: Ses
     with httpx.Client(transport=_ErrorTransport()) as client:
         process_delivery(delivery, wk_db_session, client)
 
-    assert delivery.status == DeliveryStatus.failed
+    # Under MAX_DELIVERY_ATTEMPTS: retry is scheduled
+    assert delivery.status == DeliveryStatus.pending
+    assert delivery.next_attempt_at > datetime.now(UTC)
     wk_db_session.expire(delivery)
     assert len(delivery.attempts) == 1
     attempt = delivery.attempts[0]
@@ -376,9 +383,10 @@ def test_process_delivery_increments_attempt_count_on_retry(wk_db_session: Sessi
         process_delivery(delivery, wk_db_session, client)
 
     assert delivery.attempt_count == 1
-    assert delivery.status == DeliveryStatus.failed
+    # Under MAX_DELIVERY_ATTEMPTS: retry is scheduled, delivery is PENDING
+    assert delivery.status == DeliveryStatus.pending
 
-    # Simulate a re-queue for retry
+    # Simulate re-claim for retry
     delivery.status = DeliveryStatus.in_flight
     wk_db_session.flush()
 
@@ -391,3 +399,112 @@ def test_process_delivery_increments_attempt_count_on_retry(wk_db_session: Sessi
     wk_db_session.expire(delivery)
     assert len(delivery.attempts) == 2
     assert delivery.attempts[1].attempt_number == 2
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: compute_next_attempt_at (no DB required)
+# ---------------------------------------------------------------------------
+
+
+def test_compute_next_attempt_at_attempt_1() -> None:
+    """Attempt 1: delay is base_seconds (before cap and jitter)."""
+    base, cap = 10.0, 3600.0
+    before = datetime.now(UTC)
+    result = compute_next_attempt_at(1, base, cap)
+    # delay = min(10 * 2^0, 3600) = 10; jitter in [0, 1.0]
+    elapsed = (result - before).total_seconds()
+    assert 10.0 <= elapsed <= 11.1
+
+
+def test_compute_next_attempt_at_attempt_6() -> None:
+    """Attempt 6: delay is 320s (10 * 2^5), still below default cap."""
+    base, cap = 10.0, 3600.0
+    before = datetime.now(UTC)
+    result = compute_next_attempt_at(6, base, cap)
+    # delay = min(10 * 2^5, 3600) = 320; jitter in [0, 32.0]
+    elapsed = (result - before).total_seconds()
+    assert 320.0 <= elapsed <= 352.1
+
+
+def test_compute_next_attempt_at_delay_capped() -> None:
+    """Delay is capped at cap_seconds regardless of attempt number."""
+    base, cap = 10.0, 5.0
+    before = datetime.now(UTC)
+    result = compute_next_attempt_at(10, base, cap)
+    # uncapped = 10 * 2^9 = 5120; capped to 5; jitter in [0, 0.5]
+    elapsed = (result - before).total_seconds()
+    assert 5.0 <= elapsed <= 5.6
+
+
+def test_compute_next_attempt_at_jitter_within_bounds() -> None:
+    """Jitter always falls within [0, delay * 0.1] across many samples."""
+    base, cap = 10.0, 3600.0
+    # delay = 10; jitter must be in [0, 1.0]
+    for _ in range(50):
+        before = datetime.now(UTC)
+        result = compute_next_attempt_at(1, base, cap)
+        after = datetime.now(UTC)
+        assert result >= before + timedelta(seconds=10.0)
+        assert result <= after + timedelta(seconds=11.0 + 0.01)
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: retry and dead-letter flow
+# ---------------------------------------------------------------------------
+
+
+def test_failing_delivery_retries_then_dead_letters(wk_db_session: Session) -> None:
+    """A delivery that always fails reaches DEAD_LETTERED after MAX_DELIVERY_ATTEMPTS."""
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    max_attempts = settings.max_delivery_attempts
+
+    project = _make_project(wk_db_session, "retry-dead-letter")
+    secret = generate_endpoint_secret()
+    ep = _make_endpoint(wk_db_session, project.id, secret)
+    event = _make_event(wk_db_session, project.id)
+    delivery = _make_delivery(wk_db_session, event, ep)
+    delivery.status = DeliveryStatus.in_flight
+    wk_db_session.flush()
+
+    transport = _MockTransport(status_code=503)
+    with httpx.Client(transport=transport) as client:
+        # First (max_attempts - 1) failures → PENDING with backoff
+        for i in range(max_attempts - 1):
+            process_delivery(delivery, wk_db_session, client)
+            assert delivery.status == DeliveryStatus.pending, f"attempt {i + 1} should be PENDING"
+            assert delivery.next_attempt_at > datetime.now(UTC)
+            # Re-claim for next attempt
+            delivery.status = DeliveryStatus.in_flight
+            wk_db_session.flush()
+
+        # Final attempt → DEAD_LETTERED
+        process_delivery(delivery, wk_db_session, client)
+
+    assert delivery.status == DeliveryStatus.dead_lettered
+    assert delivery.attempt_count == max_attempts
+    wk_db_session.expire(delivery)
+    assert len(delivery.attempts) == max_attempts
+
+
+def test_expired_lease_delivery_is_recovered(wk_db_session: Session) -> None:
+    """An IN_FLIGHT delivery with an expired lease is reset and re-claimed on the next run_once."""
+    project = _make_project(wk_db_session, "lease-recovery")
+    ep = _make_endpoint(wk_db_session, project.id, "lease-secret")
+    event = _make_event(wk_db_session, project.id)
+    delivery = _make_delivery(wk_db_session, event, ep)
+
+    # Simulate a crashed worker: delivery is IN_FLIGHT with an expired lease
+    delivery.status = DeliveryStatus.in_flight
+    delivery.leased_until = datetime.now(UTC) - timedelta(seconds=1)
+    delivery.next_attempt_at = datetime.now(UTC) - timedelta(seconds=1)
+    wk_db_session.flush()
+
+    transport = _MockTransport(status_code=200)
+    with httpx.Client(transport=transport) as client:
+        count = run_once(wk_db_session, client)
+
+    assert count == 1
+    wk_db_session.expire(delivery)
+    assert delivery.status == DeliveryStatus.succeeded

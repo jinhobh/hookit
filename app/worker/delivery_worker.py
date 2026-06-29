@@ -7,7 +7,7 @@ import time
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import get_settings
@@ -16,6 +16,7 @@ from app.models.delivery_attempt import DeliveryAttempt
 from app.models.endpoint import Endpoint
 from app.models.event import Event
 from app.services.crypto import decrypt_secret
+from app.worker.backoff import compute_next_attempt_at
 from app.worker.signing import build_signature_header
 
 _LEASE_SECONDS = 60
@@ -60,6 +61,20 @@ def claim_due_deliveries(session: Session, batch_size: int = _BATCH_SIZE) -> lis
     return list(rows)
 
 
+def _recover_expired_leases(session: Session) -> None:
+    """Reset IN_FLIGHT deliveries with an expired lease back to PENDING."""
+    now = datetime.now(UTC)
+    session.execute(
+        update(Delivery)
+        .where(
+            Delivery.status == DeliveryStatus.in_flight,
+            Delivery.leased_until < now,
+        )
+        .values(status=DeliveryStatus.pending, leased_until=None)
+    )
+    session.flush()
+
+
 def process_delivery(
     delivery: Delivery,
     session: Session,
@@ -67,8 +82,9 @@ def process_delivery(
 ) -> None:
     """POST the signed event payload to the endpoint and record the attempt.
 
-    On 2xx response → SUCCEEDED.  Any other outcome (non-2xx or network error)
-    → FAILED.  Retry scheduling is a Phase 8 concern.
+    On 2xx response → SUCCEEDED.  On failure, schedules a retry (PENDING with
+    next_attempt_at via exponential backoff) if under the attempt limit, or
+    transitions to DEAD_LETTERED when the limit is reached.
     """
     settings = get_settings()
     endpoint: Endpoint = delivery.endpoint
@@ -127,12 +143,26 @@ def process_delivery(
     )
 
     delivery.attempt_count = attempt_number
-    delivery.status = DeliveryStatus.succeeded if succeeded else DeliveryStatus.failed
+
+    if succeeded:
+        delivery.status = DeliveryStatus.succeeded
+    elif attempt_number >= settings.max_delivery_attempts:
+        delivery.status = DeliveryStatus.dead_lettered
+    else:
+        delivery.status = DeliveryStatus.pending
+        delivery.next_attempt_at = compute_next_attempt_at(
+            attempt_number,
+            settings.retry_base_seconds,
+            settings.retry_cap_seconds,
+        )
+        delivery.leased_until = None
+
     session.flush()
 
 
 def run_once(session: Session, http_client: httpx.Client) -> int:
     """Claim and process one batch of due deliveries.  Returns the number processed."""
+    _recover_expired_leases(session)
     deliveries = claim_due_deliveries(session)
     for delivery in deliveries:
         process_delivery(delivery, session, http_client)

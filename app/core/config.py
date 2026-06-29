@@ -61,8 +61,6 @@ class Settings(BaseSettings):
     )
 
     # --- Delivery / worker defaults ---------------------------------------
-    # These are intentionally present as placeholders so later phases have a
-    # single, typed home for tuning. They are not yet consumed by any code.
     delivery_timeout_seconds: float = Field(
         default=10.0,
         description="Per-attempt HTTP timeout when delivering a webhook.",
@@ -70,6 +68,14 @@ class Settings(BaseSettings):
     max_delivery_attempts: int = Field(
         default=6,
         description="Total attempts before a delivery is dead-lettered.",
+    )
+    retry_base_seconds: float = Field(
+        default=10.0,
+        description="Base delay in seconds for exponential backoff retry scheduling.",
+    )
+    retry_cap_seconds: float = Field(
+        default=3600.0,
+        description="Maximum delay in seconds for exponential backoff retry scheduling.",
     )
 
 
