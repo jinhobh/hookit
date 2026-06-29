@@ -5,10 +5,9 @@ clients and delivers them **reliably and asynchronously** to registered webhook
 endpoints — with idempotency, HMAC signing, retries with exponential backoff,
 dead-lettering, and manual redrive.
 
-> **Status: project skeleton only.** The repository currently contains a minimal
-> FastAPI app (a `/health` endpoint), the full engineering documentation, and an
-> autonomous agent workflow that builds the product incrementally through GitHub
-> issues and pull requests. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+> **Status: Phases 0–9 complete.** The API, delivery worker, retries, dead-lettering,
+> inspection endpoints, manual redrive, and end-to-end test are all live. Phase 10
+> (demo receiver and README polish) is in progress. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ---
 
@@ -42,7 +41,7 @@ serious portfolio piece showing production-style judgment rather than a CRUD toy
 - **Observability** — structured delivery/attempt logs queryable through APIs.
 - **Testing & type safety** — pytest, mypy (strict), ruff, enforced in CI.
 
-## 4. Planned architecture
+## 4. Architecture
 
 ```
                  ┌─────────────────────────────────────────────┐
@@ -83,7 +82,7 @@ retries failures per the backoff schedule.
 
 ## 5. Run locally
 
-Requires Python 3.12 and (for the database) Docker.
+Requires Python 3.12 and Docker.
 
 ```bash
 # Clone, then create a virtual environment
@@ -93,12 +92,18 @@ pip install -e ".[dev]"
 # Configure
 cp .env.example .env
 
-# Start Postgres (the app currently only needs it for later phases)
+# Start Postgres
 docker compose up -d postgres
+
+# Run database migrations
+alembic upgrade head
 
 # Run the API
 uvicorn app.main:app --reload
 # → http://localhost:8000/health  →  {"status": "ok"}
+
+# In a separate terminal, run the delivery worker
+python -m app.worker
 ```
 
 ## 6. Run tests & quality checks
@@ -151,9 +156,16 @@ To restore a human merge gate instead, delete `.github/workflows/auto-merge.yml`
 
 ## 9. Current status
 
-**Phase 0 — repository and agent setup.** Skeleton + agent OS only; the webhook
-product is built phase-by-phase via the roadmap. No product logic is implemented
-yet beyond the health endpoint.
+**Phases 0–9 complete.** The full webhook delivery platform is implemented and
+running: authenticated API, event publishing with idempotency, endpoint
+registration, async delivery worker, HMAC-SHA256 signing, exponential backoff
+with jitter, dead-lettering, manual redrive, and inspection/list APIs for events
+and deliveries. An end-to-end integration test covering publish → deliver →
+inspect is also merged.
+
+**Phase 10 in progress:** a standalone demo receiver with HMAC signature
+verification (issue #43) is the remaining open item. README polish (this change)
+is part of Phase 10 as well.
 
 ## License
 
