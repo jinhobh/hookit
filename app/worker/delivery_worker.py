@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from datetime import UTC, datetime, timedelta
 
@@ -18,6 +19,8 @@ from app.models.event import Event
 from app.services.crypto import decrypt_secret
 from app.worker.backoff import compute_next_attempt_at
 from app.worker.signing import build_signature_header
+
+logger = logging.getLogger(__name__)
 
 _LEASE_SECONDS = 60
 _BATCH_SIZE = 10
@@ -146,8 +149,24 @@ def process_delivery(
 
     if succeeded:
         delivery.status = DeliveryStatus.succeeded
+        logger.info(
+            "delivery attempt succeeded"
+            " delivery_id=%s attempt_number=%d http_status=%s duration_ms=%d",
+            delivery.id,
+            attempt_number,
+            response_status,
+            duration_ms,
+        )
     elif attempt_number >= settings.max_delivery_attempts:
         delivery.status = DeliveryStatus.dead_lettered
+        logger.warning(
+            "delivery dead-lettered after max attempts"
+            " delivery_id=%s attempt_number=%d http_status=%s network_error=%s",
+            delivery.id,
+            attempt_number,
+            response_status,
+            bool(error),
+        )
     else:
         delivery.status = DeliveryStatus.pending
         delivery.next_attempt_at = compute_next_attempt_at(
@@ -156,6 +175,14 @@ def process_delivery(
             settings.retry_cap_seconds,
         )
         delivery.leased_until = None
+        logger.info(
+            "delivery attempt failed; retry scheduled"
+            " delivery_id=%s attempt_number=%d http_status=%s network_error=%s",
+            delivery.id,
+            attempt_number,
+            response_status,
+            bool(error),
+        )
 
     session.flush()
 
