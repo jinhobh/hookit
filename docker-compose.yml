@@ -29,12 +29,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    # NOTE: a Dockerfile is added in a later phase (see docs/ROADMAP.md, Phase 1).
-    # Until then, run the app locally with:
-    #   uvicorn app.main:app --reload
     environment:
+      APP_NAME: reliable-webhook-platform
       APP_ENV: local
+      DEBUG: "false"
       DATABASE_URL: postgresql+psycopg://webhook:webhook@postgres:5432/webhook
+      DELIVERY_TIMEOUT_SECONDS: "10"
+      MAX_DELIVERY_ATTEMPTS: "6"
     ports:
       - "8000:8000"
     depends_on:
