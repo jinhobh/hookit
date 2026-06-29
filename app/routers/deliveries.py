@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import base64
 import uuid
-from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,26 +15,14 @@ from app.models.delivery import Delivery, DeliveryStatus
 from app.models.delivery_attempt import DeliveryAttempt
 from app.models.endpoint import Endpoint
 from app.models.project import Project
+from app.routers._pagination import decode_cursor as _decode_cursor
+from app.routers._pagination import encode_cursor as _encode_cursor
 from app.schemas.delivery import DeliveryAttemptResponse, DeliveryPageResponse, DeliveryResponse
 
 router = APIRouter(prefix="/deliveries", tags=["deliveries"])
 
 _DEFAULT_LIMIT = 50
 _MAX_LIMIT = 200
-
-
-def _encode_cursor(created_at: datetime, delivery_id: uuid.UUID) -> str:
-    raw = f"{created_at.isoformat()}|{delivery_id}"
-    return base64.urlsafe_b64encode(raw.encode()).decode()
-
-
-def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
-    try:
-        raw = base64.urlsafe_b64decode(cursor.encode()).decode()
-        created_at_str, id_str = raw.split("|", 1)
-        return datetime.fromisoformat(created_at_str), uuid.UUID(id_str)
-    except Exception:
-        raise HTTPException(status_code=422, detail="Invalid cursor") from None
 
 
 def _get_delivery_or_404(delivery_id: uuid.UUID, project: Project, session: Session) -> Delivery:

@@ -309,6 +309,177 @@ def test_idempotency_conflict_returns_409(client: TestClient, project_key: str) 
 
 
 # ---------------------------------------------------------------------------
+# GET /events — list with cursor pagination
+# ---------------------------------------------------------------------------
+
+
+def test_list_events_requires_auth(client: TestClient) -> None:
+    resp = client.get("/events")
+    assert resp.status_code == 401
+
+
+def test_list_events_empty_returns_empty_page(client: TestClient, project_key: str) -> None:
+    resp = client.get("/events", headers=_auth(project_key))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data == {"items": [], "next_cursor": None}
+
+
+def test_list_events_happy_path(
+    client: TestClient, project_with_endpoint: tuple[Project, str]
+) -> None:
+    project, key = project_with_endpoint
+    resp1 = client.post("/events", json=_VALID_BODY, headers=_auth(key))
+    assert resp1.status_code == 201
+
+    resp = client.get("/events", headers=_auth(key))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["items"]) == 1
+    item = data["items"][0]
+    assert item["type"] == _VALID_BODY["type"]
+    assert item["payload"] == _VALID_BODY["payload"]
+    assert "id" in item
+    assert "created_at" in item
+    assert item["delivery_count"] == 1
+    assert data["next_cursor"] is None
+
+
+def test_list_events_next_cursor_present_when_results_exceed_limit(
+    client: TestClient, project_key: str
+) -> None:
+    for i in range(3):
+        client.post(
+            "/events",
+            json={"type": "order.created", "payload": {"i": i}},
+            headers=_auth(project_key),
+        )
+
+    resp = client.get("/events?limit=2", headers=_auth(project_key))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["items"]) == 2
+    assert data["next_cursor"] is not None
+
+
+def test_list_events_next_cursor_absent_on_last_page(client: TestClient, project_key: str) -> None:
+    for i in range(3):
+        client.post(
+            "/events",
+            json={"type": "order.created", "payload": {"i": i}},
+            headers=_auth(project_key),
+        )
+
+    page1 = client.get("/events?limit=2", headers=_auth(project_key)).json()
+    cursor = page1["next_cursor"]
+    assert cursor is not None
+
+    page2 = client.get(f"/events?limit=2&cursor={cursor}", headers=_auth(project_key)).json()
+    assert len(page2["items"]) == 1
+    assert page2["next_cursor"] is None
+
+
+def test_list_events_cursor_covers_all_items_without_overlap(
+    client: TestClient, project_key: str
+) -> None:
+    for i in range(5):
+        client.post(
+            "/events",
+            json={"type": "order.created", "payload": {"i": i}},
+            headers=_auth(project_key),
+        )
+
+    page1 = client.get("/events?limit=3", headers=_auth(project_key)).json()
+    assert len(page1["items"]) == 3
+    cursor = page1["next_cursor"]
+    assert cursor is not None
+
+    page2 = client.get(f"/events?limit=3&cursor={cursor}", headers=_auth(project_key)).json()
+    assert len(page2["items"]) == 2
+    assert page2["next_cursor"] is None
+
+    page1_ids = {item["id"] for item in page1["items"]}
+    page2_ids = {item["id"] for item in page2["items"]}
+    assert page1_ids.isdisjoint(page2_ids)
+    assert len(page1_ids | page2_ids) == 5
+
+
+def test_list_events_event_type_filter_narrows_results(
+    client: TestClient, project_key: str
+) -> None:
+    client.post(
+        "/events",
+        json={"type": "order.created", "payload": {}},
+        headers=_auth(project_key),
+    )
+    client.post(
+        "/events",
+        json={"type": "order.updated", "payload": {}},
+        headers=_auth(project_key),
+    )
+    client.post(
+        "/events",
+        json={"type": "order.created", "payload": {}},
+        headers=_auth(project_key),
+    )
+
+    resp = client.get("/events?event_type=order.created", headers=_auth(project_key))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["items"]) == 2
+    assert all(item["type"] == "order.created" for item in data["items"])
+
+
+def test_list_events_scoped_to_project(client: TestClient, ev_db_session: Session) -> None:
+    _, key1 = _make_project_and_key(ev_db_session, "project-list-scope-1")
+    project2, _ = _make_project_and_key(ev_db_session, "project-list-scope-2")
+    _make_endpoint(ev_db_session, project2.id, ["order.created"])
+
+    client.post("/events", json=_VALID_BODY, headers=_auth(key1))
+
+    resp = client.get("/events", headers=_auth(key1))
+    data = resp.json()
+    assert len(data["items"]) == 1
+
+    # No events should belong to project2
+    from app.models.event import Event as EventModel
+    from sqlalchemy import select as sa_select
+
+    p2_events = list(
+        ev_db_session.execute(
+            sa_select(EventModel).where(EventModel.project_id == project2.id)
+        ).scalars()
+    )
+    assert len(p2_events) == 0
+
+
+def test_list_events_delivery_count_zero_when_no_endpoints(
+    client: TestClient, project_key: str
+) -> None:
+    client.post("/events", json=_VALID_BODY, headers=_auth(project_key))
+
+    resp = client.get("/events", headers=_auth(project_key))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["items"][0]["delivery_count"] == 0
+
+
+def test_list_events_invalid_cursor_returns_422(client: TestClient, project_key: str) -> None:
+    resp = client.get("/events?cursor=notavalidcursor", headers=_auth(project_key))
+    assert resp.status_code == 422
+
+
+def test_list_events_limit_too_large_returns_422(client: TestClient, project_key: str) -> None:
+    resp = client.get("/events?limit=101", headers=_auth(project_key))
+    assert resp.status_code == 422
+
+
+def test_list_events_limit_zero_returns_422(client: TestClient, project_key: str) -> None:
+    resp = client.get("/events?limit=0", headers=_auth(project_key))
+    assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
 # Input validation
 # ---------------------------------------------------------------------------
 

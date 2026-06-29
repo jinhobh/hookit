@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
@@ -38,3 +39,20 @@ class EventIngestResponse(BaseModel):
 
     event_id: uuid.UUID
     queued_deliveries: int
+
+
+class EventListItem(BaseModel):
+    """Single item in GET /events response."""
+
+    id: uuid.UUID
+    type: str
+    payload: dict[str, Any]
+    created_at: datetime
+    delivery_count: int
+
+
+class EventListResponse(BaseModel):
+    """Paginated response envelope for GET /events."""
+
+    items: list[EventListItem]
+    next_cursor: str | None
