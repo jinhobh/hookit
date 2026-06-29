@@ -65,3 +65,9 @@ class EndpointCreateResponse(EndpointResponse):
     """
 
     secret: str
+
+
+class RotateSecretResponse(BaseModel):
+    """Returned by POST /endpoints/{id}/rotate-secret — the new plaintext secret only."""
+
+    secret: str
