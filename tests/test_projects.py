@@ -7,6 +7,7 @@ is unreachable). Uses savepoint-based rollback for test isolation.
 from __future__ import annotations
 
 import hashlib
+import time
 import uuid
 from collections.abc import Generator
 
@@ -305,7 +306,9 @@ def test_list_api_keys_ordered_by_created_at(client: TestClient) -> None:
     project_resp = client.post("/projects", json={"name": "list-order-project"})
     project_id = project_resp.json()["id"]
     resp1 = client.post(f"/projects/{project_id}/api-keys", json={"name": "first"})
+    time.sleep(0.002)
     resp2 = client.post(f"/projects/{project_id}/api-keys", json={"name": "second"})
+    time.sleep(0.002)
     resp3 = client.post(f"/projects/{project_id}/api-keys", json={"name": "third"})
 
     resp = client.get(f"/projects/{project_id}/api-keys")

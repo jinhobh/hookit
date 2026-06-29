@@ -52,7 +52,7 @@ class ApiKeyListItem(BaseModel):
     """
 
     id: uuid.UUID
-    prefix: str = Field(alias="key_prefix")
+    prefix: str = Field(validation_alias="key_prefix")
     name: str | None
     created_at: datetime
     last_used_at: datetime | None
