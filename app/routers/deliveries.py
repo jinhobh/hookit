@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -114,3 +115,21 @@ def list_delivery_attempts(
             .order_by(DeliveryAttempt.attempt_number)
         ).scalars()
     )
+
+
+@router.post("/{delivery_id}/redrive", response_model=DeliveryResponse)
+def redrive_delivery(
+    delivery_id: uuid.UUID,
+    project: Project = Depends(get_current_project),
+    session: Session = Depends(get_session),
+) -> Delivery:
+    """Re-queue a dead-lettered delivery for immediate retry."""
+    delivery = _get_delivery_or_404(delivery_id, project, session)
+    if delivery.status != DeliveryStatus.dead_lettered:
+        raise HTTPException(status_code=409, detail="Delivery is not dead-lettered")
+    delivery.status = DeliveryStatus.pending
+    delivery.next_attempt_at = datetime.now(UTC)
+    delivery.leased_until = None
+    session.commit()
+    session.refresh(delivery)
+    return delivery
