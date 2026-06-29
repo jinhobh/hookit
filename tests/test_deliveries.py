@@ -491,3 +491,83 @@ def test_list_attempts_scoped_to_project(client: TestClient, dl_db_session: Sess
 
     resp = client.get(f"/deliveries/{delivery2.id}/attempts", headers=_auth(key1))
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# POST /deliveries/{id}/redrive tests
+# ---------------------------------------------------------------------------
+
+
+def test_redrive_dead_lettered_delivery_succeeds(
+    client: TestClient, dl_db_session: Session
+) -> None:
+    project, key = _make_project_and_key(dl_db_session, "project-redrive-ok")
+    endpoint = _make_endpoint(dl_db_session, project.id)
+    event = _make_event(dl_db_session, project.id)
+    delivery = _make_delivery(dl_db_session, event, endpoint)
+    delivery.status = DeliveryStatus.dead_lettered
+    delivery.attempt_count = 5
+    delivery.leased_until = datetime(2026, 1, 1, tzinfo=UTC)
+    dl_db_session.flush()
+
+    resp = client.post(f"/deliveries/{delivery.id}/redrive", headers=_auth(key))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["id"] == str(delivery.id)
+    assert data["status"] == "pending"
+    assert data["attempt_count"] == 5
+    assert data["leased_until"] is None
+
+
+def test_redrive_not_found_returns_404(client: TestClient, dl_db_session: Session) -> None:
+    _, key = _make_project_and_key(dl_db_session, "project-redrive-404")
+    resp = client.post(f"/deliveries/{uuid.uuid4()}/redrive", headers=_auth(key))
+    assert resp.status_code == 404
+
+
+def test_redrive_scoped_to_project_returns_404(client: TestClient, dl_db_session: Session) -> None:
+    _, key1 = _make_project_and_key(dl_db_session, "project-redrive-scope-1")
+    project2, _ = _make_project_and_key(dl_db_session, "project-redrive-scope-2")
+    endpoint2 = _make_endpoint(dl_db_session, project2.id)
+    event2 = _make_event(dl_db_session, project2.id)
+    delivery2 = _make_delivery(dl_db_session, event2, endpoint2)
+    delivery2.status = DeliveryStatus.dead_lettered
+    dl_db_session.flush()
+
+    resp = client.post(f"/deliveries/{delivery2.id}/redrive", headers=_auth(key1))
+    assert resp.status_code == 404
+
+
+def test_redrive_pending_delivery_returns_409(client: TestClient, dl_db_session: Session) -> None:
+    project, key = _make_project_and_key(dl_db_session, "project-redrive-409-pending")
+    endpoint = _make_endpoint(dl_db_session, project.id)
+    event = _make_event(dl_db_session, project.id)
+    delivery = _make_delivery(dl_db_session, event, endpoint)
+    assert delivery.status == DeliveryStatus.pending
+
+    resp = client.post(f"/deliveries/{delivery.id}/redrive", headers=_auth(key))
+    assert resp.status_code == 409
+    assert "not dead-lettered" in resp.json()["detail"]
+
+
+def test_redrive_succeeded_delivery_returns_409(client: TestClient, dl_db_session: Session) -> None:
+    project, key = _make_project_and_key(dl_db_session, "project-redrive-409-succeeded")
+    endpoint = _make_endpoint(dl_db_session, project.id)
+    event = _make_event(dl_db_session, project.id)
+    delivery = _make_delivery(dl_db_session, event, endpoint)
+    delivery.status = DeliveryStatus.succeeded
+    dl_db_session.flush()
+
+    resp = client.post(f"/deliveries/{delivery.id}/redrive", headers=_auth(key))
+    assert resp.status_code == 409
+    assert "not dead-lettered" in resp.json()["detail"]
+
+
+def test_redrive_requires_auth(client: TestClient, dl_db_session: Session) -> None:
+    project, _ = _make_project_and_key(dl_db_session, "project-redrive-auth")
+    endpoint = _make_endpoint(dl_db_session, project.id)
+    event = _make_event(dl_db_session, project.id)
+    delivery = _make_delivery(dl_db_session, event, endpoint)
+
+    resp = client.post(f"/deliveries/{delivery.id}/redrive")
+    assert resp.status_code == 401
