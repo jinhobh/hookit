@@ -7,7 +7,7 @@ import logging
 from fastapi import FastAPI
 
 from app.core.config import get_settings
-from app.routers import deliveries, endpoints, events, me
+from app.routers import deliveries, endpoints, events, me, projects
 
 
 def create_app() -> FastAPI:
@@ -30,6 +30,7 @@ def create_app() -> FastAPI:
     )
 
     application.include_router(me.router)
+    application.include_router(projects.router)
     application.include_router(endpoints.router)
     application.include_router(events.router)
     application.include_router(deliveries.router)

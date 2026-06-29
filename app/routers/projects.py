@@ -1,0 +1,72 @@
+"""Router for project and API key provisioning.
+
+Admin/bootstrap endpoints — no authentication required in the MVP.
+These routes allow operators to create projects and mint API keys without
+direct database access. They are intentionally unauthenticated in this phase.
+"""
+
+from __future__ import annotations
+
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.db.session import get_session
+from app.models.api_key import ApiKey, generate_api_key
+from app.models.project import Project
+from app.schemas.project import ApiKeyCreate, ApiKeyCreateResponse, ProjectCreate, ProjectResponse
+
+router = APIRouter(prefix="/projects", tags=["projects"])
+
+
+@router.post("", status_code=201, response_model=ProjectResponse)
+def create_project(
+    body: ProjectCreate,
+    session: Session = Depends(get_session),
+) -> ProjectResponse:
+    """Create a new project.
+
+    Admin/bootstrap endpoint — no authentication required in the MVP.
+    """
+    project = Project(name=body.name)
+    session.add(project)
+    session.commit()
+    session.refresh(project)
+    return ProjectResponse.model_validate(project)
+
+
+@router.post("/{project_id}/api-keys", status_code=201, response_model=ApiKeyCreateResponse)
+def create_api_key(
+    project_id: uuid.UUID,
+    body: ApiKeyCreate,
+    session: Session = Depends(get_session),
+) -> ApiKeyCreateResponse:
+    """Mint a new API key scoped to the given project.
+
+    Admin/bootstrap endpoint — no authentication required in the MVP.
+    The plaintext key is returned exactly once and never stored or logged.
+    Returns 404 if the project does not exist.
+    """
+    project = session.execute(select(Project).where(Project.id == project_id)).scalar_one_or_none()
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    plaintext, key_prefix, key_hash = generate_api_key()
+    api_key = ApiKey(
+        project_id=project.id,
+        name=body.name,
+        key_prefix=key_prefix,
+        key_hash=key_hash,
+    )
+    session.add(api_key)
+    session.commit()
+    session.refresh(api_key)
+    return ApiKeyCreateResponse(
+        id=api_key.id,
+        key=plaintext,
+        prefix=api_key.key_prefix,
+        name=api_key.name,
+        created_at=api_key.created_at,
+    )
