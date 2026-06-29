@@ -432,25 +432,22 @@ def test_list_events_event_type_filter_narrows_results(
 
 def test_list_events_scoped_to_project(client: TestClient, ev_db_session: Session) -> None:
     _, key1 = _make_project_and_key(ev_db_session, "project-list-scope-1")
-    project2, _ = _make_project_and_key(ev_db_session, "project-list-scope-2")
-    _make_endpoint(ev_db_session, project2.id, ["order.created"])
+    _, key2 = _make_project_and_key(ev_db_session, "project-list-scope-2")
 
-    client.post("/events", json=_VALID_BODY, headers=_auth(key1))
+    client.post("/events", json={"type": "order.created", "payload": {"p": 1}}, headers=_auth(key1))
+    client.post("/events", json={"type": "order.created", "payload": {"p": 2}}, headers=_auth(key2))
 
-    resp = client.get("/events", headers=_auth(key1))
-    data = resp.json()
-    assert len(data["items"]) == 1
+    resp1 = client.get("/events", headers=_auth(key1))
+    assert resp1.status_code == 200
+    data1 = resp1.json()
+    assert len(data1["items"]) == 1
+    assert data1["items"][0]["payload"] == {"p": 1}
 
-    # No events should belong to project2
-    from app.models.event import Event as EventModel
-    from sqlalchemy import select as sa_select
-
-    p2_events = list(
-        ev_db_session.execute(
-            sa_select(EventModel).where(EventModel.project_id == project2.id)
-        ).scalars()
-    )
-    assert len(p2_events) == 0
+    resp2 = client.get("/events", headers=_auth(key2))
+    assert resp2.status_code == 200
+    data2 = resp2.json()
+    assert len(data2["items"]) == 1
+    assert data2["items"][0]["payload"] == {"p": 2}
 
 
 def test_list_events_delivery_count_zero_when_no_endpoints(
