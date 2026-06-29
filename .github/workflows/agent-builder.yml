@@ -136,12 +136,17 @@ jobs:
 
           if ! grep -Eq '"api_error_status":[[:space:]]*429|"error":[[:space:]]*"rate_limit"' "$log"; then
             echo "No rate-limit termination detected."
+            # Clear any stale cooldown so the idle monitor can dispatch freely (best-effort).
+            gh variable delete BUILDER_COOLDOWN_UNTIL 2>/dev/null || true
             exit 0
           fi
 
           retry="${RETRY_COUNT:-0}"
           if [ "$retry" -ge "$MAX_RETRIES" ]; then
             echo "::warning::Builder hit a rate limit and exhausted ${MAX_RETRIES} retries; not re-dispatching. Re-run manually once budget recovers."
+            # Signal the idle monitor to back off for ~60 m (best-effort).
+            cooldown_until=$(( $(date -u +%s) + 3600 ))
+            gh variable set BUILDER_COOLDOWN_UNTIL --body "$cooldown_until" || true
             exit 0
           fi
 
@@ -151,6 +156,9 @@ jobs:
           # next run waits for this job regardless). Scaled, capped at 5 min.
           backoff=$(( next * 60 ))
           [ "$backoff" -gt 300 ] && backoff=300
+          # Signal the idle monitor to stay off while retries are in flight (best-effort).
+          cooldown_until=$(( $(date -u +%s) + 3600 ))
+          gh variable set BUILDER_COOLDOWN_UNTIL --body "$cooldown_until" || true
           echo "::warning::Builder stopped on a rate limit (attempt ${retry}). Backing off ${backoff}s then re-dispatching (attempt ${next}/${MAX_RETRIES})."
           sleep "$backoff"
           gh workflow run agent-builder.yml -f retry_count="${next}"
