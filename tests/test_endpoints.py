@@ -8,6 +8,7 @@ transaction that is rolled back on teardown, providing full isolation.
 from __future__ import annotations
 
 from collections.abc import Generator
+from typing import Any
 
 import pytest
 from app.db.base import Base
@@ -393,3 +394,92 @@ def test_delete_endpoint_not_found(client_a: TestClient, project_a_key: str) -> 
 
     resp = client_a.delete(f"/endpoints/{uuid.uuid4()}", headers=_auth(project_a_key))
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# POST /endpoints/{id}/rotate-secret
+# ---------------------------------------------------------------------------
+
+
+def _create_endpoint(client: TestClient, key: str) -> Any:
+    resp = client.post(
+        "/endpoints",
+        json={"url": _VALID_URL, "event_types": _VALID_TYPES},
+        headers=_auth(key),
+    )
+    assert resp.status_code == 201
+    return resp.json()
+
+
+def test_rotate_secret_returns_200_with_secret(client_a: TestClient, project_a_key: str) -> None:
+    ep = _create_endpoint(client_a, project_a_key)
+    resp = client_a.post(f"/endpoints/{ep['id']}/rotate-secret", headers=_auth(project_a_key))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "secret" in data
+    assert len(data["secret"]) > 0
+
+
+def test_rotate_secret_produces_different_secret(
+    client_a: TestClient, project_a_key: str, ep_db_session: Session
+) -> None:
+    import uuid as _uuid
+
+    from app.models.endpoint import Endpoint
+    from sqlalchemy import select
+
+    ep = _create_endpoint(client_a, project_a_key)
+    ep_id = ep["id"]
+
+    old_enc = (
+        ep_db_session.execute(select(Endpoint).where(Endpoint.id == _uuid.UUID(ep_id)))
+        .scalar_one()
+        .secret_enc
+    )
+
+    resp = client_a.post(f"/endpoints/{ep_id}/rotate-secret", headers=_auth(project_a_key))
+    assert resp.status_code == 200
+
+    ep_db_session.expire_all()
+    new_enc = (
+        ep_db_session.execute(select(Endpoint).where(Endpoint.id == _uuid.UUID(ep_id)))
+        .scalar_one()
+        .secret_enc
+    )
+
+    assert new_enc != old_enc
+
+
+def test_rotate_secret_second_call_produces_different_secret(
+    client_a: TestClient, project_a_key: str
+) -> None:
+    ep = _create_endpoint(client_a, project_a_key)
+    ep_id = ep["id"]
+    resp1 = client_a.post(f"/endpoints/{ep_id}/rotate-secret", headers=_auth(project_a_key))
+    resp2 = client_a.post(f"/endpoints/{ep_id}/rotate-secret", headers=_auth(project_a_key))
+    assert resp1.status_code == 200
+    assert resp2.status_code == 200
+    assert resp1.json()["secret"] != resp2.json()["secret"]
+
+
+def test_rotate_secret_404_for_wrong_project(
+    client_a: TestClient, project_a_key: str, project_b_key: str
+) -> None:
+    ep = _create_endpoint(client_a, project_a_key)
+    resp = client_a.post(f"/endpoints/{ep['id']}/rotate-secret", headers=_auth(project_b_key))
+    assert resp.status_code == 404
+
+
+def test_rotate_secret_404_for_nonexistent_endpoint(
+    client_a: TestClient, project_a_key: str
+) -> None:
+    import uuid
+
+    resp = client_a.post(f"/endpoints/{uuid.uuid4()}/rotate-secret", headers=_auth(project_a_key))
+    assert resp.status_code == 404
+
+
+def test_rotate_secret_requires_auth(client_a: TestClient, project_a_key: str) -> None:
+    ep = _create_endpoint(client_a, project_a_key)
+    resp = client_a.post(f"/endpoints/{ep['id']}/rotate-secret")
+    assert resp.status_code == 401

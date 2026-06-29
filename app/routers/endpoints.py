@@ -17,6 +17,7 @@ from app.schemas.endpoint import (
     EndpointCreateResponse,
     EndpointResponse,
     EndpointUpdate,
+    RotateSecretResponse,
 )
 from app.services.crypto import encrypt_secret, generate_endpoint_secret
 from app.services.ssrf import SSRFError, validate_url_not_ssrf
@@ -121,3 +122,20 @@ def delete_endpoint(
     endpoint = _get_endpoint_or_404(endpoint_id, project, session)
     session.delete(endpoint)
     session.commit()
+
+
+@router.post("/{endpoint_id}/rotate-secret", response_model=RotateSecretResponse)
+def rotate_endpoint_secret(
+    endpoint_id: uuid.UUID,
+    project: Project = Depends(get_current_project),
+    session: Session = Depends(get_session),
+) -> RotateSecretResponse:
+    """Generate a new signing secret for an endpoint, replacing the old one.
+
+    The plaintext secret is returned exactly once and never stored.
+    """
+    endpoint = _get_endpoint_or_404(endpoint_id, project, session)
+    plaintext_secret = generate_endpoint_secret()
+    endpoint.secret_enc = encrypt_secret(plaintext_secret)
+    session.commit()
+    return RotateSecretResponse(secret=plaintext_secret)
