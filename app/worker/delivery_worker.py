@@ -17,6 +17,7 @@ from app.models.delivery_attempt import DeliveryAttempt
 from app.models.endpoint import Endpoint
 from app.models.event import Event
 from app.services.crypto import decrypt_secret
+from app.services.ssrf import SSRFError, validate_url_not_ssrf
 from app.worker.backoff import compute_next_attempt_at
 from app.worker.signing import build_signature_header
 
@@ -112,6 +113,31 @@ def process_delivery(
     }
 
     attempt_number = delivery.attempt_count + 1
+
+    # SSRF check: dead-letter immediately if the URL targets a non-public address
+    try:
+        validate_url_not_ssrf(endpoint.url)
+    except SSRFError as exc:
+        session.add(
+            DeliveryAttempt(
+                delivery_id=delivery.id,
+                attempt_number=attempt_number,
+                response_status=None,
+                response_body=None,
+                error=str(exc),
+                duration_ms=0,
+            )
+        )
+        delivery.attempt_count = attempt_number
+        delivery.status = DeliveryStatus.dead_lettered
+        logger.warning(
+            "delivery dead-lettered: SSRF protection blocked URL delivery_id=%s url=%s",
+            delivery.id,
+            endpoint.url,
+        )
+        session.flush()
+        return
+
     t0 = time.monotonic()
 
     response_status: int | None = None
