@@ -4,9 +4,10 @@
 queuing, manual redrive, HMAC-SHA256 signing, and Postgres-as-queue — no external
 broker required.**
 
-> **Status: Phases 0–9 complete.** The API, delivery worker, retries, dead-lettering,
-> inspection endpoints, manual redrive, and end-to-end tests are all live.
-> See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+> **Status: MVP complete, plus hardening.** The API, delivery worker, retries,
+> dead-lettering, inspection endpoints, manual redrive, and end-to-end tests are
+> all live — along with SSRF protection, per-endpoint rate limiting, Prometheus
+> metrics, and a `LISTEN/NOTIFY`-driven worker. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ---
 
@@ -28,14 +29,6 @@ how the deployment is wired.
 
 > The instance scales to zero when idle to keep hosting costs near zero, so the
 > first request after a quiet period may take ~1–2s to wake.
-
----
-
-## 1. What this is
-
-> **[Live demo URL — to be added after deployment]**
->
-> ![Demo GIF — to be recorded after deployment](docs/demo.gif)
 
 ---
 
@@ -159,18 +152,47 @@ deliveries become eligible again rather than being silently dropped.
 ### SSRF handling of untrusted target URLs
 
 Webhook target URLs are supplied by authenticated clients but treated as
-untrusted. The architecture document flags SSRF risk; a future hardening issue
-will enforce an allowlist or block private IP ranges at the egress layer.
+untrusted. Registration rejects IP-literal hosts in loopback, RFC 1918 private,
+and link-local/metadata ranges (`app/services/ssrf.py`). DNS-based SSRF
+(a hostname that *resolves* to a private address) is a known, documented
+limitation — out of scope until egress-time resolution checks are added.
+
+---
+
+## Reliability demo scenarios
+
+Four reproducible scripts in [`demo/`](demo) exercise the reliability guarantees
+end-to-end against a local stack — no mocking, real Postgres, real HTTP:
+
+1. **Failure → backoff → dead-letter** — an always-failing receiver drives a
+   delivery through the full retry cycle to `DEAD_LETTERED`.
+2. **Redrive** — a dead-lettered delivery is redriven and succeeds, preserving
+   prior attempt history.
+3. **Idempotency** — replaying `POST /events` with the same key is a no-op;
+   a payload mismatch on a known key returns `409`.
+4. **Crash recovery** — the worker is killed mid-delivery; the transaction
+   rolls back and a restarted worker completes the delivery exactly once.
+
+```bash
+bash demo/run_all.sh   # runs all four against a local API + Postgres
+```
+
+See [`demo/README.md`](demo/README.md) for prerequisites and individual runs.
 
 ---
 
 ## Benchmark numbers
 
-> **[Benchmark results — to be filled in after the benchmark run]**
->
-> See [`tests/benchmark/`](tests/benchmark/) for the harness.
-> Preliminary targets: ≥ 500 events/s ingest throughput, p99 delivery latency < 2 s
-> under a single worker at moderate queue depth.
+A throughput + latency harness lives in [`benchmark/`](benchmark) — it publishes
+N events at a configurable concurrency and measures end-to-end delivery latency
+(p50/p95/p99) against a running API + worker:
+
+```bash
+python -m benchmark --events 500 --concurrency 10
+```
+
+> Results aren't published yet — run it against your own deployment and drop
+> the numbers here.
 
 ---
 
@@ -262,6 +284,11 @@ The system authenticates the key, enforces idempotency, stores the event, fans
 out to subscribed endpoints, and returns. The worker delivers asynchronously,
 records every attempt, and retries failures on the backoff schedule. Dead-lettered
 deliveries can be redriven via `POST /deliveries/{id}/redrive`.
+
+Operational extras beyond the core delivery path: `GET /metrics` (Prometheus
+exposition), per-endpoint `rate_limit_rps` to throttle a slow receiver, and
+`POST /endpoints/{id}/rotate-secret` for signing-secret rotation without
+downtime. Full endpoint list: `/docs`.
 
 ---
 
