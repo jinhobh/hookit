@@ -70,6 +70,13 @@ class EndpointCreateResponse(EndpointResponse):
     secret: str
 
 
+class EndpointPageResponse(BaseModel):
+    """Paginated envelope returned by GET /endpoints."""
+
+    items: list[EndpointResponse]
+    next_cursor: str | None = None
+
+
 class RotateSecretResponse(BaseModel):
     """Returned by POST /endpoints/{id}/rotate-secret — the new plaintext secret only."""
 
