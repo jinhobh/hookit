@@ -61,6 +61,7 @@ def create_endpoint(
         event_types=body.event_types,
         secret_enc=encrypt_secret(plaintext_secret),
         status=body.status,
+        rate_limit_rps=body.rate_limit_rps,
     )
     session.add(endpoint)
     session.commit()
@@ -73,6 +74,7 @@ def create_endpoint(
         status=endpoint.status,
         created_at=endpoint.created_at,
         updated_at=endpoint.updated_at,
+        rate_limit_rps=endpoint.rate_limit_rps,
         secret=plaintext_secret,
     )
 
@@ -107,6 +109,8 @@ def update_endpoint(
         endpoint.event_types = body.event_types
     if body.status is not None:
         endpoint.status = body.status
+    if body.rate_limit_rps is not None:
+        endpoint.rate_limit_rps = body.rate_limit_rps
     session.commit()
     session.refresh(endpoint)
     return endpoint

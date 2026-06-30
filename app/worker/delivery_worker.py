@@ -223,11 +223,27 @@ def process_delivery(
     session.flush()
 
 
+def sleep_for_rate_limit(rate_limit_rps: float | None) -> None:
+    """Sleep 1/rate_limit_rps seconds when a rate limit is set.
+
+    Single-process MVP throttle: no distributed coordination across workers.
+    Applied between consecutive deliveries to the same endpoint within one batch.
+    """
+    if rate_limit_rps is not None:
+        time.sleep(1.0 / rate_limit_rps)
+
+
 def run_once(session: Session, http_client: httpx.Client) -> int:
     """Claim and process one batch of due deliveries.  Returns the number processed."""
     _recover_expired_leases(session)
     deliveries = claim_due_deliveries(session)
     DELIVERIES_CLAIMED_TOTAL.inc(len(deliveries))
+    seen_endpoint_ids: set[object] = set()
     for delivery in deliveries:
+        endpoint_id = delivery.endpoint_id
+        if endpoint_id in seen_endpoint_ids:
+            sleep_for_rate_limit(delivery.endpoint.rate_limit_rps)
+        else:
+            seen_endpoint_ids.add(endpoint_id)
         process_delivery(delivery, session, http_client)
     return len(deliveries)

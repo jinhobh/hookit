@@ -483,3 +483,103 @@ def test_rotate_secret_requires_auth(client_a: TestClient, project_a_key: str) -
     ep = _create_endpoint(client_a, project_a_key)
     resp = client_a.post(f"/endpoints/{ep['id']}/rotate-secret")
     assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# rate_limit_rps field
+# ---------------------------------------------------------------------------
+
+
+def test_create_endpoint_with_rate_limit_rps(client_a: TestClient, project_a_key: str) -> None:
+    resp = client_a.post(
+        "/endpoints",
+        json={"url": _VALID_URL, "event_types": _VALID_TYPES, "rate_limit_rps": 10.0},
+        headers=_auth(project_a_key),
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["rate_limit_rps"] == 10.0
+
+
+def test_create_endpoint_rate_limit_rps_defaults_to_null(
+    client_a: TestClient, project_a_key: str
+) -> None:
+    resp = client_a.post(
+        "/endpoints",
+        json={"url": _VALID_URL, "event_types": _VALID_TYPES},
+        headers=_auth(project_a_key),
+    )
+    assert resp.status_code == 201
+    assert resp.json()["rate_limit_rps"] is None
+
+
+def test_list_endpoints_includes_rate_limit_rps(client_a: TestClient, project_a_key: str) -> None:
+    client_a.post(
+        "/endpoints",
+        json={"url": _VALID_URL, "event_types": _VALID_TYPES, "rate_limit_rps": 5.0},
+        headers=_auth(project_a_key),
+    )
+    resp = client_a.get("/endpoints", headers=_auth(project_a_key))
+    assert resp.status_code == 200
+    assert resp.json()[0]["rate_limit_rps"] == 5.0
+
+
+def test_patch_endpoint_updates_rate_limit_rps(client_a: TestClient, project_a_key: str) -> None:
+    create = client_a.post(
+        "/endpoints",
+        json={"url": _VALID_URL, "event_types": _VALID_TYPES},
+        headers=_auth(project_a_key),
+    )
+    ep_id = create.json()["id"]
+    resp = client_a.patch(
+        f"/endpoints/{ep_id}",
+        json={"rate_limit_rps": 50.0},
+        headers=_auth(project_a_key),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["rate_limit_rps"] == 50.0
+
+
+def test_create_endpoint_rate_limit_rps_zero_is_invalid(
+    client_a: TestClient, project_a_key: str
+) -> None:
+    resp = client_a.post(
+        "/endpoints",
+        json={"url": _VALID_URL, "event_types": _VALID_TYPES, "rate_limit_rps": 0},
+        headers=_auth(project_a_key),
+    )
+    assert resp.status_code == 422
+
+
+def test_create_endpoint_rate_limit_rps_negative_is_invalid(
+    client_a: TestClient, project_a_key: str
+) -> None:
+    resp = client_a.post(
+        "/endpoints",
+        json={"url": _VALID_URL, "event_types": _VALID_TYPES, "rate_limit_rps": -1.0},
+        headers=_auth(project_a_key),
+    )
+    assert resp.status_code == 422
+
+
+def test_create_endpoint_rate_limit_rps_above_max_is_invalid(
+    client_a: TestClient, project_a_key: str
+) -> None:
+    resp = client_a.post(
+        "/endpoints",
+        json={"url": _VALID_URL, "event_types": _VALID_TYPES, "rate_limit_rps": 1000.1},
+        headers=_auth(project_a_key),
+    )
+    assert resp.status_code == 422
+
+
+def test_create_endpoint_rate_limit_rps_at_max_is_valid(
+    client_a: TestClient, project_a_key: str
+) -> None:
+    resp = client_a.post(
+        "/endpoints",
+        json={"url": _VALID_URL, "event_types": _VALID_TYPES, "rate_limit_rps": 1000.0},
+        headers=_auth(project_a_key),
+    )
+    assert resp.status_code == 201
+    assert resp.json()["rate_limit_rps"] == 1000.0
