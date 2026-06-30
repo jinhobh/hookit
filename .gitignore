@@ -31,3 +31,8 @@ coverage.xml
 # Local databases / data
 *.sqlite3
 pgdata/
+
+# Local tooling / agent state (may contain credentials)
+.neon
+.claude/
+skills-lock.json

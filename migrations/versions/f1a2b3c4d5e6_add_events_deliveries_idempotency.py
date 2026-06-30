@@ -10,7 +10,7 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ENUM, JSONB
 
 # revision identifiers, used by Alembic.
 revision: str = "f1a2b3c4d5e6"
@@ -55,7 +55,7 @@ def upgrade() -> None:
         sa.Column("endpoint_id", sa.Uuid(), nullable=False),
         sa.Column(
             "status",
-            sa.Enum(
+            ENUM(
                 "pending",
                 "in_flight",
                 "succeeded",

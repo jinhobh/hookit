@@ -1,0 +1,46 @@
+# Fly.io deployment for the Reliable Webhook Delivery Platform.
+#
+# Two process groups run from the SAME image:
+#   - app    : the FastAPI HTTP API (ingestion, CRUD, inspection)
+#   - worker : the delivery loop (claims due deliveries, signs + POSTs, retries)
+#
+# Migrations run once per deploy via [deploy].release_command, before the new
+# version takes traffic. See docs/DEPLOY.md for the full step-by-step.
+#
+# Rename `app` below to your actual Fly app name (set by `fly launch`).
+
+app = "hookit"
+primary_region = "iad"  # change to a region near you / your Postgres
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  # Runs in a temporary machine on the new image before release. Idempotent.
+  release_command = "alembic upgrade head"
+
+[processes]
+  app = "uvicorn app.main:app --host 0.0.0.0 --port 8000"
+  worker = "python -m app.worker"
+
+# HTTP is served only by the `app` process group.
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = true        # let idle app machines stop to save money
+  auto_start_machines = true       # auto-start on the next request (~1s cold start)
+  min_machines_running = 0         # scale to zero when idle; set to 1 to keep warm
+  processes = ["app"]
+
+  [http_service.http_options]
+    # /health is the cheap liveness probe (no DB dependency).
+    [[http_service.checks]]
+      method = "GET"
+      path = "/health"
+      interval = "15s"
+      timeout = "2s"
+      grace_period = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

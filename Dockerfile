@@ -9,6 +9,11 @@ RUN useradd --no-create-home --shell /bin/false appuser
 COPY pyproject.toml README.md ./
 COPY app/ ./app/
 
+# Include Alembic config + migrations so the image can run `alembic upgrade head`
+# (used by the Fly release_command and any container-driven migration step).
+COPY alembic.ini ./
+COPY migrations/ ./migrations/
+
 RUN pip install --no-cache-dir .
 
 # Transfer ownership and switch to non-root user
