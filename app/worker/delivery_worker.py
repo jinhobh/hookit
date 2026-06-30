@@ -141,7 +141,6 @@ def process_delivery(
             endpoint.url,
         )
         DELIVERIES_TOTAL.labels(outcome="dead_lettered").inc()
-        DELIVERY_DURATION_SECONDS.observe(0.0)
         session.flush()
         return
 

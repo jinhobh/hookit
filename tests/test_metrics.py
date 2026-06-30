@@ -16,7 +16,7 @@ from app.models.project import Project
 from app.services.crypto import encrypt_secret
 from app.worker.delivery_worker import process_delivery
 from fastapi.testclient import TestClient
-from prometheus_client import REGISTRY
+from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
@@ -35,7 +35,7 @@ def test_metrics_returns_200() -> None:
 
 def test_metrics_content_type() -> None:
     response = client.get("/metrics")
-    assert response.headers["content-type"].startswith("text/plain")
+    assert response.headers["content-type"] == CONTENT_TYPE_LATEST
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +161,21 @@ def test_dead_lettered_counter_increments(met_db_session: Session) -> None:
     before = _sample("webhook_deliveries_total", {"outcome": "dead_lettered"})
 
     with httpx.Client(transport=_MockTransport(503)) as http:
+        process_delivery(delivery, met_db_session, http)
+
+    after = _sample("webhook_deliveries_total", {"outcome": "dead_lettered"})
+    assert after - before == 1.0
+
+
+def test_ssrf_dead_lettered_counter_increments(met_db_session: Session) -> None:
+    project = _make_project(met_db_session, "metrics-ssrf-dead-letter")
+    ep = _make_endpoint(met_db_session, project.id, url="http://169.254.169.254/hook")
+    event = _make_event(met_db_session, project.id)
+    delivery = _make_inflight_delivery(met_db_session, event, ep)
+
+    before = _sample("webhook_deliveries_total", {"outcome": "dead_lettered"})
+
+    with httpx.Client() as http:
         process_delivery(delivery, met_db_session, http)
 
     after = _sample("webhook_deliveries_total", {"outcome": "dead_lettered"})
