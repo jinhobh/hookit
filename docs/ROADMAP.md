@@ -71,7 +71,7 @@ Legend: each task is sized to be a single PR with tests and passing checks.
 - [x] Preserve attempt history; guard against redriving non-dead-lettered rows.
 
 ## Phase 10 — Demo receiver and README polish
-- [ ] A tiny demo receiver app that verifies signatures (for end-to-end demo).
+- [x] A tiny demo receiver app that verifies signatures (for end-to-end demo).
 - [x] End-to-end happy-path test: publish → deliver → inspect.
 - [x] README/architecture polish, sequence diagrams, and a short demo script.
 
