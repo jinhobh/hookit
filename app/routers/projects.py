@@ -16,7 +16,14 @@ from sqlalchemy.orm import Session
 from app.db.session import get_session
 from app.models.api_key import ApiKey, generate_api_key
 from app.models.project import Project
-from app.schemas.project import ApiKeyCreate, ApiKeyCreateResponse, ProjectCreate, ProjectResponse
+from app.schemas.project import (
+    ApiKeyCreate,
+    ApiKeyCreateResponse,
+    ApiKeyListItem,
+    ProjectCreate,
+    ProjectResponse,
+)
+from app.services.api_keys import revoke_api_key
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -70,3 +77,46 @@ def create_api_key(
         name=api_key.name,
         created_at=api_key.created_at,
     )
+
+
+@router.get("/{project_id}/api-keys", response_model=list[ApiKeyListItem])
+def list_api_keys(
+    project_id: uuid.UUID,
+    session: Session = Depends(get_session),
+) -> list[ApiKeyListItem]:
+    """List all API keys for a project, ordered by creation date ascending.
+
+    Admin/bootstrap endpoint — no authentication required in the MVP.
+    Returns 404 if the project does not exist.
+    key_hash is never included in responses.
+    """
+    project = session.execute(select(Project).where(Project.id == project_id)).scalar_one_or_none()
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    api_keys = (
+        session.execute(
+            select(ApiKey).where(ApiKey.project_id == project_id).order_by(ApiKey.created_at.asc())
+        )
+        .scalars()
+        .all()
+    )
+    return [ApiKeyListItem.model_validate(key) for key in api_keys]
+
+
+@router.delete("/{project_id}/api-keys/{key_id}", status_code=204)
+def delete_api_key(
+    project_id: uuid.UUID,
+    key_id: uuid.UUID,
+    session: Session = Depends(get_session),
+) -> None:
+    """Revoke an API key by setting its revoked_at timestamp.
+
+    Admin/bootstrap endpoint — no authentication required in the MVP.
+    Idempotent: revoking an already-revoked key returns 204.
+    Returns 404 if the key does not exist or belongs to a different project.
+    """
+    try:
+        revoke_api_key(session=session, project_id=project_id, key_id=key_id)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="API key not found") from None

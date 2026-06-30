@@ -9,10 +9,11 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.models.delivery import Delivery, DeliveryStatus
 from app.models.endpoint import Endpoint, EndpointStatus
 from app.models.event import Event
@@ -140,5 +141,9 @@ def ingest_event(
             return existing.event_id, existing.queued_deliveries
     else:
         session.flush()
+
+    if queued_count > 0:
+        channel = get_settings().worker_listen_channel
+        session.execute(text(f"NOTIFY {channel}"))
 
     return event_id, queued_count

@@ -17,23 +17,29 @@ from app.models.delivery_attempt import DeliveryAttempt
 from app.models.endpoint import Endpoint
 from app.models.event import Event
 from app.services.crypto import decrypt_secret
+from app.services.metrics import (
+    DELIVERIES_CLAIMED_TOTAL,
+    DELIVERIES_TOTAL,
+    DELIVERY_DURATION_SECONDS,
+)
+from app.services.ssrf import SSRFError, validate_url_not_ssrf
 from app.worker.backoff import compute_next_attempt_at
 from app.worker.signing import build_signature_header
 
 logger = logging.getLogger(__name__)
 
-_LEASE_SECONDS = 60
-_BATCH_SIZE = 10
 
-
-def claim_due_deliveries(session: Session, batch_size: int = _BATCH_SIZE) -> list[Delivery]:
+def claim_due_deliveries(session: Session, batch_size: int | None = None) -> list[Delivery]:
     """Claim up to *batch_size* pending, due deliveries with FOR UPDATE SKIP LOCKED.
 
     Each claimed delivery transitions from PENDING → IN_FLIGHT and receives a
     time-bounded lease.  Concurrent workers skip locked rows rather than block.
     """
+    settings = get_settings()
+    if batch_size is None:
+        batch_size = settings.worker_batch_size
     now = datetime.now(UTC)
-    lease_until = now + timedelta(seconds=_LEASE_SECONDS)
+    lease_until = now + timedelta(seconds=settings.worker_lease_seconds)
 
     rows = (
         session.execute(
@@ -112,6 +118,32 @@ def process_delivery(
     }
 
     attempt_number = delivery.attempt_count + 1
+
+    # SSRF check: dead-letter immediately if the URL targets a non-public address
+    try:
+        validate_url_not_ssrf(endpoint.url)
+    except SSRFError as exc:
+        session.add(
+            DeliveryAttempt(
+                delivery_id=delivery.id,
+                attempt_number=attempt_number,
+                response_status=None,
+                response_body=None,
+                error=str(exc),
+                duration_ms=0,
+            )
+        )
+        delivery.attempt_count = attempt_number
+        delivery.status = DeliveryStatus.dead_lettered
+        logger.warning(
+            "delivery dead-lettered: SSRF protection blocked URL delivery_id=%s url=%s",
+            delivery.id,
+            endpoint.url,
+        )
+        DELIVERIES_TOTAL.labels(outcome="dead_lettered").inc()
+        session.flush()
+        return
+
     t0 = time.monotonic()
 
     response_status: int | None = None
@@ -146,9 +178,11 @@ def process_delivery(
     )
 
     delivery.attempt_count = attempt_number
+    DELIVERY_DURATION_SECONDS.observe(duration_ms / 1000.0)
 
     if succeeded:
         delivery.status = DeliveryStatus.succeeded
+        DELIVERIES_TOTAL.labels(outcome="succeeded").inc()
         logger.info(
             "delivery attempt succeeded"
             " delivery_id=%s attempt_number=%d http_status=%s duration_ms=%d",
@@ -159,6 +193,7 @@ def process_delivery(
         )
     elif attempt_number >= settings.max_delivery_attempts:
         delivery.status = DeliveryStatus.dead_lettered
+        DELIVERIES_TOTAL.labels(outcome="dead_lettered").inc()
         logger.warning(
             "delivery dead-lettered after max attempts"
             " delivery_id=%s attempt_number=%d http_status=%s network_error=%s",
@@ -169,6 +204,7 @@ def process_delivery(
         )
     else:
         delivery.status = DeliveryStatus.pending
+        DELIVERIES_TOTAL.labels(outcome="failed").inc()
         delivery.next_attempt_at = compute_next_attempt_at(
             attempt_number,
             settings.retry_base_seconds,
@@ -187,10 +223,27 @@ def process_delivery(
     session.flush()
 
 
+def sleep_for_rate_limit(rate_limit_rps: float | None) -> None:
+    """Sleep 1/rate_limit_rps seconds when a rate limit is set.
+
+    Single-process MVP throttle: no distributed coordination across workers.
+    Applied between consecutive deliveries to the same endpoint within one batch.
+    """
+    if rate_limit_rps is not None:
+        time.sleep(1.0 / rate_limit_rps)
+
+
 def run_once(session: Session, http_client: httpx.Client) -> int:
     """Claim and process one batch of due deliveries.  Returns the number processed."""
     _recover_expired_leases(session)
     deliveries = claim_due_deliveries(session)
+    DELIVERIES_CLAIMED_TOTAL.inc(len(deliveries))
+    seen_endpoint_ids: set[object] = set()
     for delivery in deliveries:
+        endpoint_id = delivery.endpoint_id
+        if endpoint_id in seen_endpoint_ids:
+            sleep_for_rate_limit(delivery.endpoint.rate_limit_rps)
+        else:
+            seen_endpoint_ids.add(endpoint_id)
         process_delivery(delivery, session, http_client)
     return len(deliveries)

@@ -17,8 +17,10 @@ from app.schemas.endpoint import (
     EndpointCreateResponse,
     EndpointResponse,
     EndpointUpdate,
+    RotateSecretResponse,
 )
 from app.services.crypto import encrypt_secret, generate_endpoint_secret
+from app.services.ssrf import SSRFError, validate_url_not_ssrf
 
 router = APIRouter(prefix="/endpoints", tags=["endpoints"])
 
@@ -48,6 +50,10 @@ def create_endpoint(
     returned **once** in this response.  It will not appear in subsequent
     reads.
     """
+    try:
+        validate_url_not_ssrf(str(body.url))
+    except SSRFError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     plaintext_secret = generate_endpoint_secret()
     endpoint = Endpoint(
         project_id=project.id,
@@ -55,6 +61,7 @@ def create_endpoint(
         event_types=body.event_types,
         secret_enc=encrypt_secret(plaintext_secret),
         status=body.status,
+        rate_limit_rps=body.rate_limit_rps,
     )
     session.add(endpoint)
     session.commit()
@@ -67,6 +74,7 @@ def create_endpoint(
         status=endpoint.status,
         created_at=endpoint.created_at,
         updated_at=endpoint.updated_at,
+        rate_limit_rps=endpoint.rate_limit_rps,
         secret=plaintext_secret,
     )
 
@@ -92,11 +100,17 @@ def update_endpoint(
     """Update url, event_types, or status of an endpoint owned by the project."""
     endpoint = _get_endpoint_or_404(endpoint_id, project, session)
     if body.url is not None:
+        try:
+            validate_url_not_ssrf(str(body.url))
+        except SSRFError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         endpoint.url = str(body.url)
     if body.event_types is not None:
         endpoint.event_types = body.event_types
     if body.status is not None:
         endpoint.status = body.status
+    if body.rate_limit_rps is not None:
+        endpoint.rate_limit_rps = body.rate_limit_rps
     session.commit()
     session.refresh(endpoint)
     return endpoint
@@ -112,3 +126,20 @@ def delete_endpoint(
     endpoint = _get_endpoint_or_404(endpoint_id, project, session)
     session.delete(endpoint)
     session.commit()
+
+
+@router.post("/{endpoint_id}/rotate-secret", response_model=RotateSecretResponse)
+def rotate_endpoint_secret(
+    endpoint_id: uuid.UUID,
+    project: Project = Depends(get_current_project),
+    session: Session = Depends(get_session),
+) -> RotateSecretResponse:
+    """Generate a new signing secret for an endpoint, replacing the old one.
+
+    The plaintext secret is returned exactly once and never stored.
+    """
+    endpoint = _get_endpoint_or_404(endpoint_id, project, session)
+    plaintext_secret = generate_endpoint_secret()
+    endpoint.secret_enc = encrypt_secret(plaintext_secret)
+    session.commit()
+    return RotateSecretResponse(secret=plaintext_secret)

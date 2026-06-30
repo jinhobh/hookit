@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
-_MAX_PAYLOAD_BYTES = 65_536  # 64 KiB
+from app.core.config import get_settings
 
 
 class EventCreate(BaseModel):
@@ -28,9 +28,10 @@ class EventCreate(BaseModel):
     @field_validator("payload")
     @classmethod
     def payload_size(cls, v: dict[str, Any]) -> dict[str, Any]:
+        max_bytes = get_settings().max_event_payload_bytes
         raw = json.dumps(v, separators=(",", ":"))
-        if len(raw.encode()) > _MAX_PAYLOAD_BYTES:
-            raise ValueError(f"payload must not exceed {_MAX_PAYLOAD_BYTES} bytes")
+        if len(raw.encode()) > max_bytes:
+            raise ValueError(f"payload must not exceed {max_bytes} bytes")
         return v
 
 

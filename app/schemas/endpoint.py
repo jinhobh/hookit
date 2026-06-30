@@ -16,6 +16,7 @@ class EndpointCreate(BaseModel):
     url: AnyHttpUrl
     event_types: list[str] = Field(min_length=1)
     status: EndpointStatus = EndpointStatus.active
+    rate_limit_rps: float | None = Field(default=None, gt=0, le=1000.0)
 
     @field_validator("event_types")
     @classmethod
@@ -32,6 +33,7 @@ class EndpointUpdate(BaseModel):
     url: AnyHttpUrl | None = None
     event_types: list[str] | None = Field(default=None, min_length=1)
     status: EndpointStatus | None = None
+    rate_limit_rps: float | None = Field(default=None, gt=0, le=1000.0)
 
     @field_validator("event_types")
     @classmethod
@@ -54,6 +56,7 @@ class EndpointResponse(BaseModel):
     status: EndpointStatus
     created_at: datetime
     updated_at: datetime
+    rate_limit_rps: float | None = None
 
     model_config = {"from_attributes": True}
 
@@ -63,5 +66,11 @@ class EndpointCreateResponse(EndpointResponse):
 
     The secret is returned exactly once and never stored in plaintext.
     """
+
+    secret: str
+
+
+class RotateSecretResponse(BaseModel):
+    """Returned by POST /endpoints/{id}/rotate-secret — the new plaintext secret only."""
 
     secret: str

@@ -7,7 +7,8 @@ import logging
 from fastapi import FastAPI
 
 from app.core.config import get_settings
-from app.routers import deliveries, endpoints, events, me, projects
+from app.middleware import RequestIDFilter, RequestIDMiddleware
+from app.routers import deliveries, endpoints, events, me, metrics, projects
 
 
 def create_app() -> FastAPI:
@@ -18,10 +19,18 @@ def create_app() -> FastAPI:
     """
     settings = get_settings()
 
-    logging.basicConfig(
-        level=settings.log_level.upper(),
-        format="level=%(levelname)s logger=%(name)s %(message)s",
+    log_filter = RequestIDFilter()
+    handler = logging.StreamHandler()
+    handler.addFilter(log_filter)
+    handler.setFormatter(
+        logging.Formatter(
+            "level=%(levelname)s logger=%(name)s request_id=%(request_id)s %(message)s"
+        )
     )
+    root_logger = logging.getLogger()
+    root_logger.setLevel(settings.log_level.upper())
+    root_logger.handlers.clear()
+    root_logger.addHandler(handler)
 
     application = FastAPI(
         title=settings.app_name,
@@ -29,11 +38,14 @@ def create_app() -> FastAPI:
         description="Reliable Webhook Delivery Platform — backend service.",
     )
 
+    application.add_middleware(RequestIDMiddleware)
+
     application.include_router(me.router)
     application.include_router(projects.router)
     application.include_router(endpoints.router)
     application.include_router(events.router)
     application.include_router(deliveries.router)
+    application.include_router(metrics.router)
 
     @application.get("/health", tags=["system"])
     def health() -> dict[str, str]:

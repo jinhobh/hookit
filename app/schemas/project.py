@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ProjectCreate(BaseModel):
@@ -43,3 +43,19 @@ class ApiKeyCreateResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ApiKeyListItem(BaseModel):
+    """Summary of an API key returned by GET /projects/{project_id}/api-keys.
+
+    key_hash is intentionally absent from this schema.
+    """
+
+    id: uuid.UUID
+    prefix: str = Field(validation_alias="key_prefix")
+    name: str | None
+    created_at: datetime
+    last_used_at: datetime | None
+    revoked_at: datetime | None
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
