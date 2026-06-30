@@ -8,7 +8,7 @@ from fastapi import FastAPI
 
 from app.core.config import get_settings
 from app.middleware import RequestIDFilter, RequestIDMiddleware
-from app.routers import deliveries, endpoints, events, me, projects
+from app.routers import deliveries, endpoints, events, me, metrics, projects
 
 
 def create_app() -> FastAPI:
@@ -45,6 +45,7 @@ def create_app() -> FastAPI:
     application.include_router(endpoints.router)
     application.include_router(events.router)
     application.include_router(deliveries.router)
+    application.include_router(metrics.router)
 
     @application.get("/health", tags=["system"])
     def health() -> dict[str, str]:
