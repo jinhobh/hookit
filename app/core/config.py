@@ -83,6 +83,18 @@ class Settings(BaseSettings):
         default=3600.0,
         description="Maximum delay in seconds for exponential backoff retry scheduling.",
     )
+    worker_batch_size: int = Field(
+        default=10,
+        description="Max deliveries claimed per worker loop tick.",
+    )
+    worker_lease_seconds: int = Field(
+        default=60,
+        description="Lease duration in seconds before a crashed worker's claims expire.",
+    )
+    max_event_payload_bytes: int = Field(
+        default=65_536,
+        description="Maximum JSON payload size in bytes for POST /events.",
+    )
 
 
 @lru_cache(maxsize=1)

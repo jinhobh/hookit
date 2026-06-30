@@ -23,18 +23,18 @@ from app.worker.signing import build_signature_header
 
 logger = logging.getLogger(__name__)
 
-_LEASE_SECONDS = 60
-_BATCH_SIZE = 10
 
-
-def claim_due_deliveries(session: Session, batch_size: int = _BATCH_SIZE) -> list[Delivery]:
+def claim_due_deliveries(session: Session, batch_size: int | None = None) -> list[Delivery]:
     """Claim up to *batch_size* pending, due deliveries with FOR UPDATE SKIP LOCKED.
 
     Each claimed delivery transitions from PENDING → IN_FLIGHT and receives a
     time-bounded lease.  Concurrent workers skip locked rows rather than block.
     """
+    settings = get_settings()
+    if batch_size is None:
+        batch_size = settings.worker_batch_size
     now = datetime.now(UTC)
-    lease_until = now + timedelta(seconds=_LEASE_SECONDS)
+    lease_until = now + timedelta(seconds=settings.worker_lease_seconds)
 
     rows = (
         session.execute(
