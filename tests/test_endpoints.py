@@ -125,7 +125,7 @@ def test_create_endpoint_secret_not_in_subsequent_get(
 
     resp2 = client_a.get("/endpoints", headers=_auth(project_a_key))
     assert resp2.status_code == 200
-    for ep in resp2.json():
+    for ep in resp2.json()["items"]:
         assert "secret" not in ep
 
 
@@ -206,7 +206,9 @@ def test_create_endpoint_requires_auth(client_a: TestClient) -> None:
 def test_list_endpoints_empty_initially(client_a: TestClient, project_a_key: str) -> None:
     resp = client_a.get("/endpoints", headers=_auth(project_a_key))
     assert resp.status_code == 200
-    assert resp.json() == []
+    data = resp.json()
+    assert data["items"] == []
+    assert data["next_cursor"] is None
 
 
 def test_list_endpoints_returns_created(client_a: TestClient, project_a_key: str) -> None:
@@ -217,7 +219,7 @@ def test_list_endpoints_returns_created(client_a: TestClient, project_a_key: str
     )
     resp = client_a.get("/endpoints", headers=_auth(project_a_key))
     assert resp.status_code == 200
-    assert len(resp.json()) == 1
+    assert len(resp.json()["items"]) == 1
 
 
 def test_list_endpoints_cross_project_isolation(
@@ -231,7 +233,104 @@ def test_list_endpoints_cross_project_isolation(
     )
     resp = client_a.get("/endpoints", headers=_auth(project_b_key))
     assert resp.status_code == 200
-    assert resp.json() == []
+    assert resp.json()["items"] == []
+
+
+def test_list_endpoints_pagination_next_cursor_then_none(
+    client_a: TestClient, project_a_key: str
+) -> None:
+    """Create 3 endpoints, page through with limit=2 and confirm cursor behavior."""
+    for i in range(3):
+        client_a.post(
+            "/endpoints",
+            json={"url": f"https://example.com/hook{i}", "event_types": _VALID_TYPES},
+            headers=_auth(project_a_key),
+        )
+
+    resp1 = client_a.get("/endpoints?limit=2", headers=_auth(project_a_key))
+    assert resp1.status_code == 200
+    page1 = resp1.json()
+    assert len(page1["items"]) == 2
+    assert page1["next_cursor"] is not None
+
+    resp2 = client_a.get(
+        f"/endpoints?limit=2&cursor={page1['next_cursor']}", headers=_auth(project_a_key)
+    )
+    assert resp2.status_code == 200
+    page2 = resp2.json()
+    assert len(page2["items"]) == 1
+    assert page2["next_cursor"] is None
+
+    ids1 = {ep["id"] for ep in page1["items"]}
+    ids2 = {ep["id"] for ep in page2["items"]}
+    assert ids1.isdisjoint(ids2)
+
+
+def test_list_endpoints_pagination_all_ids_covered(
+    client_a: TestClient, project_a_key: str
+) -> None:
+    """All 3 created endpoints appear across the two pages."""
+    created_ids = set()
+    for i in range(3):
+        r = client_a.post(
+            "/endpoints",
+            json={"url": f"https://example.com/wh{i}", "event_types": _VALID_TYPES},
+            headers=_auth(project_a_key),
+        )
+        created_ids.add(r.json()["id"])
+
+    resp1 = client_a.get("/endpoints?limit=2", headers=_auth(project_a_key))
+    page1 = resp1.json()
+    resp2 = client_a.get(
+        f"/endpoints?limit=2&cursor={page1['next_cursor']}", headers=_auth(project_a_key)
+    )
+    page2 = resp2.json()
+
+    seen_ids = {ep["id"] for ep in page1["items"]} | {ep["id"] for ep in page2["items"]}
+    assert seen_ids == created_ids
+
+
+def test_list_endpoints_status_filter_active(client_a: TestClient, project_a_key: str) -> None:
+    client_a.post(
+        "/endpoints",
+        json={"url": "https://example.com/a", "event_types": _VALID_TYPES, "status": "active"},
+        headers=_auth(project_a_key),
+    )
+    client_a.post(
+        "/endpoints",
+        json={"url": "https://example.com/b", "event_types": _VALID_TYPES, "status": "inactive"},
+        headers=_auth(project_a_key),
+    )
+    resp = client_a.get("/endpoints?status=active", headers=_auth(project_a_key))
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 1
+    assert items[0]["status"] == "active"
+
+
+def test_list_endpoints_status_filter_inactive(client_a: TestClient, project_a_key: str) -> None:
+    client_a.post(
+        "/endpoints",
+        json={"url": "https://example.com/c", "event_types": _VALID_TYPES, "status": "active"},
+        headers=_auth(project_a_key),
+    )
+    client_a.post(
+        "/endpoints",
+        json={"url": "https://example.com/d", "event_types": _VALID_TYPES, "status": "inactive"},
+        headers=_auth(project_a_key),
+    )
+    resp = client_a.get("/endpoints?status=inactive", headers=_auth(project_a_key))
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 1
+    assert items[0]["status"] == "inactive"
+
+
+def test_list_endpoints_invalid_cursor_returns_422(
+    client_a: TestClient, project_a_key: str
+) -> None:
+    resp = client_a.get("/endpoints?cursor=not-a-valid-cursor", headers=_auth(project_a_key))
+    assert resp.status_code == 422
 
 
 # ---------------------------------------------------------------------------
@@ -372,7 +471,7 @@ def test_delete_endpoint_removes_from_list(client_a: TestClient, project_a_key: 
     ep_id = create.json()["id"]
     client_a.delete(f"/endpoints/{ep_id}", headers=_auth(project_a_key))
     resp = client_a.get("/endpoints", headers=_auth(project_a_key))
-    assert resp.json() == []
+    assert resp.json()["items"] == []
 
 
 def test_delete_endpoint_404_for_wrong_project(
@@ -521,7 +620,7 @@ def test_list_endpoints_includes_rate_limit_rps(client_a: TestClient, project_a_
     )
     resp = client_a.get("/endpoints", headers=_auth(project_a_key))
     assert resp.status_code == 200
-    assert resp.json()[0]["rate_limit_rps"] == 5.0
+    assert resp.json()["items"][0]["rate_limit_rps"] == 5.0
 
 
 def test_patch_endpoint_updates_rate_limit_rps(client_a: TestClient, project_a_key: str) -> None:

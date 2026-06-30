@@ -3,18 +3,22 @@
 from __future__ import annotations
 
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_project
 from app.db.session import get_session
-from app.models.endpoint import Endpoint
+from app.models.endpoint import Endpoint, EndpointStatus
 from app.models.project import Project
+from app.routers._pagination import decode_cursor as _decode_cursor
+from app.routers._pagination import encode_cursor as _encode_cursor
 from app.schemas.endpoint import (
     EndpointCreate,
     EndpointCreateResponse,
+    EndpointPageResponse,
     EndpointResponse,
     EndpointUpdate,
     RotateSecretResponse,
@@ -23,6 +27,9 @@ from app.services.crypto import encrypt_secret, generate_endpoint_secret
 from app.services.ssrf import SSRFError, validate_url_not_ssrf
 
 router = APIRouter(prefix="/endpoints", tags=["endpoints"])
+
+_DEFAULT_LIMIT = 20
+_MAX_LIMIT = 100
 
 
 def _get_endpoint_or_404(endpoint_id: uuid.UUID, project: Project, session: Session) -> Endpoint:
@@ -79,15 +86,45 @@ def create_endpoint(
     )
 
 
-@router.get("", response_model=list[EndpointResponse])
+@router.get("", response_model=EndpointPageResponse)
 def list_endpoints(
+    limit: Annotated[int, Query(ge=1, le=_MAX_LIMIT)] = _DEFAULT_LIMIT,
+    cursor: str | None = None,
+    status: EndpointStatus | None = None,
     project: Project = Depends(get_current_project),
     session: Session = Depends(get_session),
-) -> list[Endpoint]:
-    """List all endpoints belonging to the authenticated project."""
-    return list(
-        session.execute(select(Endpoint).where(Endpoint.project_id == project.id)).scalars()
-    )
+) -> EndpointPageResponse:
+    """List endpoints for the authenticated project with keyset cursor pagination."""
+    stmt = select(Endpoint).where(Endpoint.project_id == project.id)
+
+    if status is not None:
+        stmt = stmt.where(Endpoint.status == status)
+
+    if cursor is not None:
+        cursor_created_at, cursor_id = _decode_cursor(cursor)
+        stmt = stmt.where(
+            or_(
+                Endpoint.created_at < cursor_created_at,
+                and_(
+                    Endpoint.created_at == cursor_created_at,
+                    Endpoint.id < cursor_id,
+                ),
+            )
+        )
+
+    stmt = stmt.order_by(Endpoint.created_at.desc(), Endpoint.id.desc()).limit(limit + 1)
+    rows = list(session.execute(stmt).scalars())
+
+    has_next = len(rows) > limit
+    page = rows[:limit]
+
+    next_cursor: str | None = None
+    if has_next and page:
+        last = page[-1]
+        next_cursor = _encode_cursor(last.created_at, last.id)
+
+    items = [EndpointResponse.model_validate(ep) for ep in page]
+    return EndpointPageResponse(items=items, next_cursor=next_cursor)
 
 
 @router.patch("/{endpoint_id}", response_model=EndpointResponse)
