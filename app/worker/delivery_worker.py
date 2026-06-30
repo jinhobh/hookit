@@ -17,6 +17,11 @@ from app.models.delivery_attempt import DeliveryAttempt
 from app.models.endpoint import Endpoint
 from app.models.event import Event
 from app.services.crypto import decrypt_secret
+from app.services.metrics import (
+    DELIVERIES_CLAIMED_TOTAL,
+    DELIVERIES_TOTAL,
+    DELIVERY_DURATION_SECONDS,
+)
 from app.services.ssrf import SSRFError, validate_url_not_ssrf
 from app.worker.backoff import compute_next_attempt_at
 from app.worker.signing import build_signature_header
@@ -135,6 +140,7 @@ def process_delivery(
             delivery.id,
             endpoint.url,
         )
+        DELIVERIES_TOTAL.labels(outcome="dead_lettered").inc()
         session.flush()
         return
 
@@ -172,9 +178,11 @@ def process_delivery(
     )
 
     delivery.attempt_count = attempt_number
+    DELIVERY_DURATION_SECONDS.observe(duration_ms / 1000.0)
 
     if succeeded:
         delivery.status = DeliveryStatus.succeeded
+        DELIVERIES_TOTAL.labels(outcome="succeeded").inc()
         logger.info(
             "delivery attempt succeeded"
             " delivery_id=%s attempt_number=%d http_status=%s duration_ms=%d",
@@ -185,6 +193,7 @@ def process_delivery(
         )
     elif attempt_number >= settings.max_delivery_attempts:
         delivery.status = DeliveryStatus.dead_lettered
+        DELIVERIES_TOTAL.labels(outcome="dead_lettered").inc()
         logger.warning(
             "delivery dead-lettered after max attempts"
             " delivery_id=%s attempt_number=%d http_status=%s network_error=%s",
@@ -195,6 +204,7 @@ def process_delivery(
         )
     else:
         delivery.status = DeliveryStatus.pending
+        DELIVERIES_TOTAL.labels(outcome="failed").inc()
         delivery.next_attempt_at = compute_next_attempt_at(
             attempt_number,
             settings.retry_base_seconds,
@@ -217,6 +227,7 @@ def run_once(session: Session, http_client: httpx.Client) -> int:
     """Claim and process one batch of due deliveries.  Returns the number processed."""
     _recover_expired_leases(session)
     deliveries = claim_due_deliveries(session)
+    DELIVERIES_CLAIMED_TOTAL.inc(len(deliveries))
     for delivery in deliveries:
         process_delivery(delivery, session, http_client)
     return len(deliveries)
