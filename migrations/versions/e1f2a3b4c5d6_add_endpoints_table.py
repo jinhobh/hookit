@@ -10,7 +10,7 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, ENUM
 
 # revision identifiers, used by Alembic.
 revision: str = "e1f2a3b4c5d6"
@@ -31,7 +31,7 @@ def upgrade() -> None:
         sa.Column("secret_enc", sa.Text(), nullable=False),
         sa.Column(
             "status",
-            sa.Enum("active", "inactive", name="endpoint_status", create_type=False),
+            ENUM("active", "inactive", name="endpoint_status", create_type=False),
             nullable=False,
         ),
         sa.Column(
