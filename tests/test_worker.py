@@ -12,6 +12,7 @@ import hmac
 import json
 from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -23,7 +24,12 @@ from app.models.event import Event
 from app.models.project import Project
 from app.services.crypto import encrypt_secret, generate_endpoint_secret
 from app.worker.backoff import compute_next_attempt_at
-from app.worker.delivery_worker import claim_due_deliveries, process_delivery, run_once
+from app.worker.delivery_worker import (
+    claim_due_deliveries,
+    process_delivery,
+    run_once,
+    sleep_for_rate_limit,
+)
 from app.worker.signing import build_signature_header, sign_payload
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
@@ -533,3 +539,84 @@ def test_expired_lease_delivery_is_recovered(wk_db_session: Session) -> None:
     assert count == 1
     wk_db_session.expire(delivery)
     assert delivery.status == DeliveryStatus.succeeded
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: sleep_for_rate_limit (no DB required)
+# ---------------------------------------------------------------------------
+
+
+def test_sleep_for_rate_limit_no_sleep_when_none() -> None:
+    """No sleep when rate_limit_rps is None."""
+    with patch("time.sleep") as mock_sleep:
+        sleep_for_rate_limit(None)
+        mock_sleep.assert_not_called()
+
+
+def test_sleep_for_rate_limit_sleeps_correct_duration() -> None:
+    """Sleeps 1/rps seconds when rate_limit_rps is set."""
+    with patch("time.sleep") as mock_sleep:
+        sleep_for_rate_limit(2.0)
+        mock_sleep.assert_called_once_with(0.5)
+
+
+def test_sleep_for_rate_limit_high_rps() -> None:
+    """High RPS yields a very short sleep duration."""
+    with patch("time.sleep") as mock_sleep:
+        sleep_for_rate_limit(1000.0)
+        mock_sleep.assert_called_once_with(pytest.approx(0.001))
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: per-endpoint rate limiting in run_once
+# ---------------------------------------------------------------------------
+
+
+def test_run_once_rate_limits_consecutive_same_endpoint(wk_db_session: Session) -> None:
+    """Same-endpoint deliveries trigger a rate-limit sleep between each after the first."""
+    project = _make_project(wk_db_session, "rl-same-ep")
+    ep = _make_endpoint(wk_db_session, project.id, "secret-rl")
+    ep.rate_limit_rps = 2.0
+    wk_db_session.flush()
+
+    event1 = _make_event(wk_db_session, project.id)
+    event2 = _make_event(wk_db_session, project.id)
+    event3 = _make_event(wk_db_session, project.id)
+    _make_delivery(wk_db_session, event1, ep)
+    _make_delivery(wk_db_session, event2, ep)
+    _make_delivery(wk_db_session, event3, ep)
+
+    transport = _MockTransport(status_code=200)
+    with httpx.Client(transport=transport) as client, patch("time.sleep") as mock_sleep:
+        count = run_once(wk_db_session, client)
+
+    assert count == 3
+    # First delivery has no sleep; second and third each trigger one sleep.
+    assert mock_sleep.call_count == 2
+    for call in mock_sleep.call_args_list:
+        assert call.args[0] == pytest.approx(0.5)
+
+
+def test_run_once_no_sleep_for_deliveries_to_different_endpoints(wk_db_session: Session) -> None:
+    """Deliveries to distinct endpoints do not trigger any rate-limit sleep."""
+    project = _make_project(wk_db_session, "rl-diff-ep")
+    ep1 = _make_endpoint(wk_db_session, project.id, "secret-rl-1", url="http://ep1.test/hook")
+    ep2 = _make_endpoint(wk_db_session, project.id, "secret-rl-2", url="http://ep2.test/hook")
+    ep3 = _make_endpoint(wk_db_session, project.id, "secret-rl-3", url="http://ep3.test/hook")
+    for ep in (ep1, ep2, ep3):
+        ep.rate_limit_rps = 2.0
+    wk_db_session.flush()
+
+    event1 = _make_event(wk_db_session, project.id)
+    event2 = _make_event(wk_db_session, project.id)
+    event3 = _make_event(wk_db_session, project.id)
+    _make_delivery(wk_db_session, event1, ep1)
+    _make_delivery(wk_db_session, event2, ep2)
+    _make_delivery(wk_db_session, event3, ep3)
+
+    transport = _MockTransport(status_code=200)
+    with httpx.Client(transport=transport) as client, patch("time.sleep") as mock_sleep:
+        count = run_once(wk_db_session, client)
+
+    assert count == 3
+    mock_sleep.assert_not_called()
