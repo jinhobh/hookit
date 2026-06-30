@@ -31,6 +31,27 @@ how the deployment is wired.
 
 ---
 
+## Live demo
+
+A live instance runs on [Fly.io](https://fly.io) (API + delivery worker), backed by
+serverless Postgres on [Neon](https://neon.tech):
+
+- **Interactive API docs:** https://hookit.fly.dev/docs — the Swagger UI lists and
+  lets you try every endpoint.
+- **Health check:** https://hookit.fly.dev/health → `{"status":"ok"}`
+
+It's an **API, not a website**, so the root path (`/`) intentionally returns
+`404 Not Found` — start at `/docs`. Most endpoints require an
+`Authorization: Bearer <api-key>` header. See
+[`docs/DEPLOY.md`](docs/DEPLOY.md) for an end-to-end walkthrough (mint a key,
+register an endpoint, publish an event, watch the signed delivery arrive) and for
+how the deployment is wired.
+
+> The instance scales to zero when idle to keep hosting costs near zero, so the
+> first request after a quiet period may take ~1–2s to wake.
+
+---
+
 ## 1. What this is
 
 > **[Live demo URL — to be added after deployment]**
