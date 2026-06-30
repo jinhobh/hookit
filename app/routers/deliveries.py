@@ -47,6 +47,7 @@ def list_deliveries(
     cursor: str | None = None,
     status: DeliveryStatus | None = None,
     endpoint_id: uuid.UUID | None = None,
+    event_id: uuid.UUID | None = None,
     project: Project = Depends(get_current_project),
     session: Session = Depends(get_session),
 ) -> DeliveryPageResponse:
@@ -62,6 +63,9 @@ def list_deliveries(
 
     if endpoint_id is not None:
         stmt = stmt.where(Delivery.endpoint_id == endpoint_id)
+
+    if event_id is not None:
+        stmt = stmt.where(Delivery.event_id == event_id)
 
     if cursor is not None:
         cursor_created_at, cursor_id = _decode_cursor(cursor)

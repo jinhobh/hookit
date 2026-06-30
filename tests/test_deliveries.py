@@ -403,6 +403,74 @@ def test_list_deliveries_invalid_cursor_returns_422(
     assert resp.status_code == 422
 
 
+def test_list_deliveries_filter_by_event_id(client: TestClient, dl_db_session: Session) -> None:
+    project, key = _make_project_and_key(dl_db_session, "project-dl-filter-event")
+    endpoint = _make_endpoint(dl_db_session, project.id)
+
+    event1 = _make_event(dl_db_session, project.id)
+    delivery1 = _make_delivery(dl_db_session, event1, endpoint)
+
+    event2 = _make_event(dl_db_session, project.id)
+    delivery2 = _make_delivery(dl_db_session, event2, endpoint)
+
+    resp = client.get(f"/deliveries?event_id={event1.id}", headers=_auth(key))
+    assert resp.status_code == 200
+    data = resp.json()
+    ids = {item["id"] for item in data["items"]}
+    assert str(delivery1.id) in ids
+    assert str(delivery2.id) not in ids
+
+
+def test_list_deliveries_filter_by_event_id_no_deliveries_returns_empty(
+    client: TestClient, dl_db_session: Session
+) -> None:
+    project, key = _make_project_and_key(dl_db_session, "project-dl-filter-event-empty")
+    event = _make_event(dl_db_session, project.id)
+
+    resp = client.get(f"/deliveries?event_id={event.id}", headers=_auth(key))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["items"] == []
+    assert data["next_cursor"] is None
+
+
+def test_list_deliveries_filter_by_event_id_and_status(
+    client: TestClient, dl_db_session: Session
+) -> None:
+    project, key = _make_project_and_key(dl_db_session, "project-dl-filter-event-status")
+    endpoint = _make_endpoint(dl_db_session, project.id)
+    event = _make_event(dl_db_session, project.id)
+
+    pending_delivery = _make_delivery(dl_db_session, event, endpoint)
+
+    endpoint2 = _make_endpoint(dl_db_session, project.id)
+    succeeded_delivery = _make_delivery(dl_db_session, event, endpoint2)
+    succeeded_delivery.status = DeliveryStatus.succeeded
+    dl_db_session.flush()
+
+    resp = client.get(f"/deliveries?event_id={event.id}&status=pending", headers=_auth(key))
+    assert resp.status_code == 200
+    data = resp.json()
+    ids = {item["id"] for item in data["items"]}
+    assert str(pending_delivery.id) in ids
+    assert str(succeeded_delivery.id) not in ids
+
+
+def test_list_deliveries_filter_by_event_id_from_other_project_returns_empty(
+    client: TestClient, dl_db_session: Session
+) -> None:
+    _, key1 = _make_project_and_key(dl_db_session, "project-dl-event-scope-1")
+    project2, _ = _make_project_and_key(dl_db_session, "project-dl-event-scope-2")
+    endpoint2 = _make_endpoint(dl_db_session, project2.id)
+    event2 = _make_event(dl_db_session, project2.id)
+    _make_delivery(dl_db_session, event2, endpoint2)
+
+    resp = client.get(f"/deliveries?event_id={event2.id}", headers=_auth(key1))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["items"] == []
+
+
 # ---------------------------------------------------------------------------
 # GET /deliveries/{id} tests
 # ---------------------------------------------------------------------------
