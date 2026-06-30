@@ -191,8 +191,28 @@ N events at a configurable concurrency and measures end-to-end delivery latency
 python -m benchmark --events 500 --concurrency 10
 ```
 
-> Results aren't published yet — run it against your own deployment and drop
-> the numbers here.
+Representative run — 500 events, concurrency 10, single worker, GitHub Actions
+`ubuntu-latest` runner (shared CPU; expect higher ingest throughput on a
+dedicated dev machine):
+
+| metric | value |
+|---|---|
+| ingest throughput | 40.4 events/sec |
+| delivery throughput | 208.7 deliveries/sec |
+| wall time (worker start → all delivered) | 2.40 s |
+| latency p50 | 7,500 ms |
+| latency p95 | 12,315 ms |
+| latency p99 | 12,761 ms |
+| latency mean | 7,512 ms |
+| latency min | 2,281 ms |
+| latency max | 12,785 ms |
+
+> **Context**: end-to-end latency spans `created_at` → `updated_at`, which
+> includes queue-wait time — all 500 events were ingested before the worker
+> started, so the first events waited ~12 s in the queue before delivery began.
+> These figures are from a single representative run on a resource-constrained
+> CI box; they are not a production SLA. The architecture supports horizontal
+> scaling by running multiple worker processes.
 
 ---
 
