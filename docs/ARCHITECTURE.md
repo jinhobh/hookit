@@ -155,3 +155,35 @@ paths.
   choose at-least-once + signing + event ids so receivers can dedupe.
 - **Single worker process (MVP).** Simple to reason about; the claim model already
   supports running multiple workers when needed.
+
+## 11. Live simulation (`POST /simulate/run`)
+
+Powers the dashboard's "Simulate load" button. Design constraints and how they're met:
+
+- **Reuse real code paths, not test doubles.** The batch is published through
+  the same `ingest_event()` every real client uses, and delivered through the
+  same `process_delivery()` the worker uses — real HMAC signing, a real HTTP
+  round trip to a real (self-referential) receiver, real `DeliveryAttempt`
+  rows.
+- **Two-phase commit, deliberately.** `app/services/simulate.py::run_simulation`
+  commits once after publishing the batch (so the out-of-process worker and the
+  `/simulate/receiver` route — each resolving their own DB session — can see
+  the rows under Postgres' `READ COMMITTED` default) and again after the
+  fast-forward. This is a documented exception to the usual "router commits
+  once" convention.
+- **One delivery is fast-forwarded, not fabricated.** Real backoff (base=10s,
+  cap=1h, 6 attempts) would take ~5 real minutes to reach dead-lettered. The
+  "always fails" delivery in the batch instead has `process_delivery()` called
+  back-to-back with no wait on `next_attempt_at` — real signing and recording,
+  only the *wait* is skipped, isolated in `_fast_forward_to_dead_letter`.
+- **Concurrency-safe against the real worker.** The target delivery is loaded
+  with a blocking `SELECT ... FOR UPDATE` (not `SKIP LOCKED`) bounded by a 5s
+  `lock_timeout`, so the live worker process racing to claim the same
+  just-committed row can't cause a lost update; `find_or_create_demo_endpoint`
+  guards its check-then-insert with `pg_advisory_xact_lock` since there's no
+  unique constraint to catch two concurrent first-clicks creating duplicate
+  demo endpoints.
+- **No new trust boundary.** The receiver route only ever answers
+  200/401/404/500 for its own reserved (`__simulate__`-tagged) endpoints — it
+  never initiates a request — and `/simulate/run` is scoped by the caller's own
+  project API key exactly like every other authenticated endpoint.

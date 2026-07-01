@@ -104,6 +104,20 @@ class Settings(BaseSettings):
         description="Maximum JSON payload size in bytes for POST /events.",
     )
 
+    # --- Live simulation demo ----------------------------------------------
+    public_base_url: str = Field(
+        default="http://localhost:8000",
+        description=(
+            "Base URL this process is publicly reachable at, used to build the "
+            "self-referential receiver URL for POST /simulate/run. Must be a "
+            "hostname (e.g. 'https://hookit.fly.dev' or 'http://localhost:8000'), "
+            "never an IP literal — validate_url_not_ssrf only blocks IP-literal "
+            "loopback/private/link-local hosts, so an IP-literal value here would "
+            "cause every simulated delivery to dead-letter instantly on the SSRF "
+            "check instead of reaching the receiver."
+        ),
+    )
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

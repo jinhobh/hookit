@@ -34,6 +34,19 @@ def test_settings_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     assert s.database_url == "postgresql+psycopg://test:test@testhost:5432/testdb"
 
 
+def test_public_base_url_default() -> None:
+    s = Settings()
+    assert s.public_base_url == "http://localhost:8000"
+
+
+def test_public_base_url_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://hookit.fly.dev")
+
+    s = Settings()
+
+    assert s.public_base_url == "https://hookit.fly.dev"
+
+
 def test_get_settings_is_cached() -> None:
     get_settings.cache_clear()
     s1 = get_settings()

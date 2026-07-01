@@ -111,9 +111,11 @@
       <div class="brand">HOOK<span>IT</span> · Delivery Console</div>
       <span id="live" class="dot" title="polling status"></span>
       <div class="spacer"></div>
+      <button id="demo-project" class="ghost" title="Mint a fresh project + API key and connect — no Swagger detour needed">New demo project</button>
       <input id="base" placeholder="API base (blank = same origin)" title="Optional API base URL" />
       <input id="key" type="password" placeholder="Project API key (Bearer)" />
       <button id="save">Connect</button>
+      <button id="simulate" title="Publish a demo batch through the real pipeline — watch retries, backoff, and dead-lettering happen live">Simulate load</button>
     </header>
     <main>
       <div id="cards" class="cards"></div>
@@ -137,6 +139,51 @@
         localStorage.setItem(KEY_LS, $("key").value.trim());
         localStorage.setItem(BASE_LS, $("base").value.trim());
         start();
+      });
+
+      $("demo-project").addEventListener("click", async () => {
+        const btn = $("demo-project");
+        btn.disabled = true;
+        localStorage.setItem(BASE_LS, $("base").value.trim());
+        try {
+          const project = await api("/projects", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: "dashboard-demo-" + Date.now() }),
+          });
+          const apiKey = await api(`/projects/${project.id}/api-keys`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: "dashboard" }),
+          });
+          $("key").value = apiKey.key;
+          localStorage.setItem(KEY_LS, apiKey.key);
+          start();
+        } catch (e) {
+          alert("Could not create a demo project: " + e.message);
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      $("simulate").addEventListener("click", async () => {
+        if (!localStorage.getItem(KEY_LS)) {
+          alert("Connect first — click “New demo project” or paste an API key.");
+          return;
+        }
+        const btn = $("simulate");
+        const label = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = "Simulating…";
+        try {
+          await api("/simulate/run", { method: "POST" });
+          await refresh();
+        } catch (e) {
+          alert("Simulate failed: " + e.message);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = label;
+        }
       });
 
       function apiBase() {

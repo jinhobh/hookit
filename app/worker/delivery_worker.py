@@ -103,14 +103,14 @@ def process_delivery(
 
     body = build_delivery_body(endpoint.payload_format, event.id, event.type, event.payload)
 
+    attempt_number = delivery.attempt_count + 1
     ts = int(time.time())
     headers = {
         "Content-Type": "application/json",
         "X-Webhook-Timestamp": str(ts),
         "X-Webhook-Signature": build_signature_header(secret, ts, body),
+        "X-Webhook-Attempt": str(attempt_number),
     }
-
-    attempt_number = delivery.attempt_count + 1
 
     # SSRF check: dead-letter immediately if the URL targets a non-public address
     try:
