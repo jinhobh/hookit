@@ -7,8 +7,9 @@ broker required.**
 > **Status: MVP complete, plus hardening.** The API, delivery worker, retries,
 > dead-lettering, inspection endpoints, manual redrive, and end-to-end tests are
 > all live — along with SSRF protection, per-endpoint rate limiting, Prometheus
-> metrics, a `LISTEN/NOTIFY`-driven worker, an observability dashboard, and a
-> Discord payload transform. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+> metrics, a `LISTEN/NOTIFY`-driven worker, an observability dashboard with a
+> one-click live simulation, and a Discord payload transform. See
+> [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ---
 
@@ -68,9 +69,27 @@ how the deployment is wired.
 
 ## Try it yourself — no coding required
 
-The interactive docs page has a "Try it out" button on every endpoint, so you
-can click through the whole flow in a browser. A fun way to see it work: pipe
-events into a Discord channel and watch them arrive as chat messages.
+**The fast path: two buttons, under 30 seconds, nothing to install.**
+
+1. **Open https://hookit.fly.dev/dashboard/**
+2. Click **"New demo project"** — mints a fresh project + API key and
+   connects; no Swagger detour.
+3. Click **"Simulate load"** — publishes a batch of real events through the
+   real pipeline. Watch the cards fill in live: most deliveries succeed
+   within a second, a couple genuinely retry with real exponential backoff
+   (~10s), and one is driven to dead-letter so you can click its **redrive**
+   link yourself and watch it recover.
+
+That's the whole reliability story — retry, backoff, dead-letter, redrive —
+happening in front of you. (This is unrelated to the [`demo/`](demo) CLI
+scripts elsewhere in this repo, which drive a real external receiver process
+from your terminal for local reliability testing — see below.)
+
+### The manual path — and how to pipe events into Discord
+
+Prefer to drive it yourself through the API? The interactive docs page has a
+"Try it out" button on every endpoint. A fun way to see it work: pipe events
+into a Discord channel and watch them arrive as chat messages.
 
 1. **Open https://hookit.fly.dev/docs**
 2. **Create a project** — expand `POST /projects`, click *Try it out*, give it
@@ -95,8 +114,8 @@ No terminal, no code — just filling in forms on a web page.
 
 ## Observability dashboard
 
-A read-only console at `/dashboard/` visualizes delivery health for a project:
-status totals, terminal success rate, p50/p95/p99 latency, dead-letter depth,
+A console at `/dashboard/` visualizes delivery health for a project: status
+totals, terminal success rate, p50/p95/p99 latency, dead-letter depth,
 one-minute throughput, and expandable per-delivery retry timelines with inline
 redrive. It's a static single-page app that authenticates against the JSON API
 with a project API key — the same key used for `/events` and `/endpoints` — so
@@ -106,6 +125,20 @@ It's backed by `GET /metrics/summary`, which aggregates the `deliveries` and
 `delivery_attempts` tables directly (via `percentile_cont` for latency), so the
 numbers are durable and survive worker restarts — unlike the process-local
 Prometheus counters exposed at `/metrics`.
+
+Two buttons on the dashboard turn it from a passive viewer into a live demo:
+**"New demo project"** self-provisions a project + API key (`POST /projects` +
+`POST /projects/{id}/api-keys`, both intentionally unauthenticated bootstrap
+endpoints), and **"Simulate load"** (`POST /simulate/run`) publishes a fixed
+batch of real events through the real pipeline — most succeed immediately, a
+couple retry once with genuine exponential backoff, and one is driven to
+dead-lettered so it can be redriven right there. The batch is delivered to a
+reserved, self-referential receiver endpoint (`POST /simulate/receiver/{id}`,
+HMAC-verified like any real receiver) rather than a third-party URL, so the
+demo has no external dependency. See `app/services/simulate.py` for exactly
+which parts are real production code paths versus an intentional, documented
+fast-forward of retry *timing* (not of signing, delivery, or dead-lettering
+logic) — detailed in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
 
@@ -242,6 +275,21 @@ untrusted. Registration rejects IP-literal hosts in loopback, RFC 1918 private,
 and link-local/metadata ranges (`app/services/ssrf.py`). DNS-based SSRF
 (a hostname that *resolves* to a private address) is a known, documented
 limitation — out of scope until egress-time resolution checks are added.
+
+### Fast-forwarding the live simulation's dead-letter, honestly
+
+`POST /simulate/run` (`app/services/simulate.py`) publishes real events
+through the real fan-out and delivery path — the same `ingest_event()` and
+`process_delivery()` production code the rest of the system uses, no test
+doubles. The one deliberate shortcut: the batch's "always fails" delivery is
+driven through its attempts back-to-back instead of waiting for real
+exponential backoff between them (with default settings, 6 attempts would
+otherwise take ~5 real minutes to exhaust), so a dashboard visitor gets a
+redrivable dead-lettered row in under a second. Signing, HTTP delivery,
+attempt recording, and the dead-letter threshold itself are all unmodified —
+only the *wait* between attempts is skipped, and that skip is isolated to one
+function (`_fast_forward_to_dead_letter`) with a docstring saying so, not
+hidden inside the general delivery path.
 
 ---
 
@@ -394,9 +442,10 @@ deliveries can be redriven via `POST /deliveries/{id}/redrive`.
 Operational extras beyond the core delivery path: `GET /metrics` (Prometheus
 exposition) and `GET /metrics/summary` (dashboard-facing aggregates),
 per-endpoint `rate_limit_rps` to throttle a slow receiver, per-endpoint
-`payload_format` (`raw` or `discord`) to transform outbound deliveries, and
+`payload_format` (`raw` or `discord`) to transform outbound deliveries,
 `POST /endpoints/{id}/rotate-secret` for signing-secret rotation without
-downtime. Full endpoint list: `/docs`.
+downtime, and `POST /simulate/run` (project-scoped) which powers the
+dashboard's one-click live demo. Full endpoint list: `/docs`.
 
 ---
 

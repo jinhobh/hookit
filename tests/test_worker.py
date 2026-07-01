@@ -30,7 +30,7 @@ from app.worker.delivery_worker import (
     run_once,
     sleep_for_rate_limit,
 )
-from app.worker.signing import build_signature_header, sign_payload
+from app.worker.signing import build_signature_header, sign_payload, verify_signature
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
@@ -72,6 +72,45 @@ def test_build_signature_header_format() -> None:
     body = b'{"test": true}'
     header = build_signature_header(secret, ts, body)
     assert header == f"t={ts},v1={sign_payload(secret, ts, body)}"
+
+
+def test_verify_signature_accepts_matching_header() -> None:
+    secret = "test-secret"
+    ts = 1700000000
+    body = b'{"a":1}'
+    header = build_signature_header(secret, ts, body)
+    ok, reason = verify_signature(secret, header, body, now=float(ts))
+    assert ok, reason
+
+
+def test_verify_signature_rejects_missing_header() -> None:
+    ok, reason = verify_signature("secret", None, b"{}")
+    assert not ok
+    assert "missing" in reason
+
+
+def test_verify_signature_rejects_malformed_header() -> None:
+    ok, reason = verify_signature("secret", "not-a-valid-header", b"{}")
+    assert not ok
+    assert "malformed" in reason
+
+
+def test_verify_signature_rejects_wrong_secret() -> None:
+    ts = 1700000000
+    body = b'{"a":1}'
+    header = build_signature_header("secret-a", ts, body)
+    ok, reason = verify_signature("secret-b", header, body, now=float(ts))
+    assert not ok
+    assert reason == "signature mismatch"
+
+
+def test_verify_signature_rejects_expired_timestamp() -> None:
+    ts = 1700000000
+    body = b'{"a":1}'
+    header = build_signature_header("secret", ts, body)
+    ok, reason = verify_signature("secret", header, body, now=float(ts) + 400)
+    assert not ok
+    assert "too old" in reason
 
 
 # ---------------------------------------------------------------------------
@@ -351,6 +390,22 @@ def test_process_delivery_sends_correct_hmac_signature(wk_db_session: Session) -
     body = req.content
     expected = sign_payload(secret, ts, body)
     assert parts["v1"] == expected
+
+
+def test_process_delivery_sends_attempt_number_header(wk_db_session: Session) -> None:
+    """Each POST carries X-Webhook-Attempt so receivers can see the attempt count."""
+    project = _make_project(wk_db_session, "process-attempt-header")
+    ep = _make_endpoint(wk_db_session, project.id, "secret")
+    event = _make_event(wk_db_session, project.id)
+    delivery = _make_delivery(wk_db_session, event, ep)
+    delivery.attempt_count = 2  # simulate two prior failures
+    wk_db_session.flush()
+
+    transport = _MockTransport(status_code=200)
+    with httpx.Client(transport=transport) as client:
+        process_delivery(delivery, wk_db_session, client)
+
+    assert transport.requests[0].headers["x-webhook-attempt"] == "3"
 
 
 def test_process_delivery_payload_contains_event_data(wk_db_session: Session) -> None:

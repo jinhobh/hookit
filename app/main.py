@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
 from app.middleware import RequestIDFilter, RequestIDMiddleware
-from app.routers import deliveries, endpoints, events, me, metrics, projects
+from app.routers import deliveries, endpoints, events, me, metrics, projects, simulate
 
 _STATIC_DIR = Path(__file__).parent / "static"
 
@@ -50,6 +50,7 @@ def create_app() -> FastAPI:
     application.include_router(events.router)
     application.include_router(deliveries.router)
     application.include_router(metrics.router)
+    application.include_router(simulate.router)
 
     @application.get("/health", tags=["system"])
     def health() -> dict[str, str]:

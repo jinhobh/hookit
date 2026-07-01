@@ -9,6 +9,22 @@ from pydantic import AnyHttpUrl, BaseModel, Field, field_validator
 
 from app.models.endpoint import EndpointStatus, PayloadFormat
 
+# Event types starting with this prefix are reserved for internal use (the
+# /simulate/run live-demo feature) so a real endpoint can never accidentally
+# subscribe to simulated traffic.
+_RESERVED_EVENT_TYPE_PREFIX = "__"
+
+
+def _check_event_types(v: list[str]) -> list[str]:
+    for item in v:
+        if not item.strip():
+            raise ValueError("each event_type must be a non-empty string")
+        if item.startswith(_RESERVED_EVENT_TYPE_PREFIX):
+            raise ValueError(
+                f"event_type must not start with reserved prefix {_RESERVED_EVENT_TYPE_PREFIX!r}"
+            )
+    return v
+
 
 class EndpointCreate(BaseModel):
     """Body for POST /endpoints."""
@@ -22,10 +38,7 @@ class EndpointCreate(BaseModel):
     @field_validator("event_types")
     @classmethod
     def event_types_nonempty_strings(cls, v: list[str]) -> list[str]:
-        for item in v:
-            if not item.strip():
-                raise ValueError("each event_type must be a non-empty string")
-        return v
+        return _check_event_types(v)
 
 
 class EndpointUpdate(BaseModel):
@@ -42,10 +55,7 @@ class EndpointUpdate(BaseModel):
     def event_types_nonempty_strings(cls, v: list[str] | None) -> list[str] | None:
         if v is None:
             return v
-        for item in v:
-            if not item.strip():
-                raise ValueError("each event_type must be a non-empty string")
-        return v
+        return _check_event_types(v)
 
 
 class EndpointResponse(BaseModel):

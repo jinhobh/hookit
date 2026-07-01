@@ -23,6 +23,12 @@ primary_region = "iad"  # change to a region near you / your Postgres
   app = "uvicorn app.main:app --host 0.0.0.0 --port 8000"
   worker = "python -m app.worker"
 
+# Non-secret config. PUBLIC_BASE_URL is this app's own public hostname, used
+# by POST /simulate/run to build a self-referential receiver URL for the
+# dashboard's "Simulate load" feature.
+[env]
+  PUBLIC_BASE_URL = "https://hookit.fly.dev"
+
 # HTTP is served only by the `app` process group.
 [http_service]
   internal_port = 8000
