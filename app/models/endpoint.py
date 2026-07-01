@@ -23,6 +23,18 @@ class EndpointStatus(StrEnum):
     inactive = "inactive"
 
 
+class PayloadFormat(StrEnum):
+    """How the worker shapes the outbound body for this endpoint.
+
+    ``raw`` sends the platform's native envelope; ``discord`` transforms the
+    event into a Discord webhook message (embed) so deliveries render as chat
+    messages in a Discord channel.
+    """
+
+    raw = "raw"
+    discord = "discord"
+
+
 class Endpoint(Base):
     """A webhook endpoint belonging to a Project.
 
@@ -41,6 +53,12 @@ class Endpoint(Base):
     secret_enc: Mapped[str] = mapped_column(Text(), nullable=False)
     status: Mapped[EndpointStatus] = mapped_column(
         Enum(EndpointStatus, name="endpoint_status"), nullable=False
+    )
+    payload_format: Mapped[PayloadFormat] = mapped_column(
+        Enum(PayloadFormat, name="payload_format"),
+        default=PayloadFormat.raw,
+        server_default=PayloadFormat.raw.value,
+        nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False

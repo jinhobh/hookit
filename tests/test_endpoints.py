@@ -149,6 +149,58 @@ def test_create_endpoint_with_inactive_status(client_a: TestClient, project_a_ke
     assert resp.json()["status"] == "inactive"
 
 
+def test_create_endpoint_defaults_to_raw_payload_format(
+    client_a: TestClient, project_a_key: str
+) -> None:
+    resp = client_a.post(
+        "/endpoints",
+        json={"url": _VALID_URL, "event_types": _VALID_TYPES},
+        headers=_auth(project_a_key),
+    )
+    assert resp.status_code == 201
+    assert resp.json()["payload_format"] == "raw"
+
+
+def test_create_endpoint_with_discord_payload_format(
+    client_a: TestClient, project_a_key: str
+) -> None:
+    resp = client_a.post(
+        "/endpoints",
+        json={"url": _VALID_URL, "event_types": _VALID_TYPES, "payload_format": "discord"},
+        headers=_auth(project_a_key),
+    )
+    assert resp.status_code == 201
+    assert resp.json()["payload_format"] == "discord"
+
+
+def test_create_endpoint_rejects_unknown_payload_format(
+    client_a: TestClient, project_a_key: str
+) -> None:
+    resp = client_a.post(
+        "/endpoints",
+        json={"url": _VALID_URL, "event_types": _VALID_TYPES, "payload_format": "slack"},
+        headers=_auth(project_a_key),
+    )
+    assert resp.status_code == 422
+
+
+def test_patch_endpoint_updates_payload_format(client_a: TestClient, project_a_key: str) -> None:
+    created = client_a.post(
+        "/endpoints",
+        json={"url": _VALID_URL, "event_types": _VALID_TYPES},
+        headers=_auth(project_a_key),
+    ).json()
+    assert created["payload_format"] == "raw"
+
+    resp = client_a.patch(
+        f"/endpoints/{created['id']}",
+        json={"payload_format": "discord"},
+        headers=_auth(project_a_key),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["payload_format"] == "discord"
+
+
 def test_create_endpoint_rejects_invalid_url(client_a: TestClient, project_a_key: str) -> None:
     resp = client_a.post(
         "/endpoints",
