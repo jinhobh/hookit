@@ -156,34 +156,47 @@ paths.
 - **Single worker process (MVP).** Simple to reason about; the claim model already
   supports running multiple workers when needed.
 
-## 11. Live simulation (`POST /simulate/run`)
+## 11. Interactive demo — Ops Console (`POST /simulate/*`)
 
-Powers the dashboard's "Simulate load" button. Design constraints and how they're met:
+Powers the dashboard's interactive demo: emit real GitHub-style events, toggle a
+stand-in "deploy pipeline" up or down, and watch retries, dead-lettering, and
+redrive recovery on real data — plus an inbox of the actual signed requests the
+receiver accepted. Design constraints and how they're met:
 
-- **Reuse real code paths, not test doubles.** The batch is published through
-  the same `ingest_event()` every real client uses, and delivered through the
-  same `process_delivery()` the worker uses — real HMAC signing, a real HTTP
-  round trip to a real (self-referential) receiver, real `DeliveryAttempt`
-  rows.
-- **Two-phase commit, deliberately.** `app/services/simulate.py::run_simulation`
-  commits once after publishing the batch (so the out-of-process worker and the
-  `/simulate/receiver` route — each resolving their own DB session — can see
-  the rows under Postgres' `READ COMMITTED` default) and again after the
-  fast-forward. This is a documented exception to the usual "router commits
-  once" convention.
+- **Reuse real code paths, not test doubles.** Events are published through the
+  same `ingest_event()` every real client uses (`POST /simulate/events`) and
+  delivered through the same `process_delivery()` the worker uses — real HMAC
+  signing, a real HTTP round trip to a real (self-referential) receiver, real
+  `DeliveryAttempt` rows.
+- **Failure is a real, DB-backed toggle — not baked into payloads.**
+  `POST /simulate/health` upserts `DemoReceiverHealth`, which the receiver reads
+  on every request. Because the flag lives in the database (not process memory),
+  the toggle write and the receiver read resolve independent sessions, and the
+  out-of-process worker observes the current value — so an *in-flight* retry
+  recovers the moment the visitor brings the pipeline back up. This is also why
+  redrive recovers with no attempt-count seeding tricks: the receiver is *down*,
+  not permanently broken.
 - **One delivery is fast-forwarded, not fabricated.** Real backoff (base=10s,
-  cap=1h, 6 attempts) would take ~5 real minutes to reach dead-lettered. The
-  "always fails" delivery in the batch instead has `process_delivery()` called
-  back-to-back with no wait on `next_attempt_at` — real signing and recording,
-  only the *wait* is skipped, isolated in `_fast_forward_to_dead_letter`.
+  cap=1h, 6 attempts) would take ~5 real minutes to reach dead-lettered.
+  `POST /simulate/dead-letter` (only allowed while the pipeline is down) instead
+  calls `process_delivery()` back-to-back with no wait on `next_attempt_at` —
+  real signing and recording, only the *wait* is skipped, isolated in
+  `_fast_forward_to_dead_letter`.
+- **Two-phase commit, deliberately.** The dead-letter path commits once after
+  publishing the event (so the out-of-process worker and the `/simulate/receiver`
+  route — each resolving their own DB session — can see the row under Postgres'
+  `READ COMMITTED` default) and again after the fast-forward. A documented
+  exception to the usual "router commits once" convention.
 - **Concurrency-safe against the real worker.** The target delivery is loaded
   with a blocking `SELECT ... FOR UPDATE` (not `SKIP LOCKED`) bounded by a 5s
-  `lock_timeout`, so the live worker process racing to claim the same
-  just-committed row can't cause a lost update; `find_or_create_demo_endpoint`
-  guards its check-then-insert with `pg_advisory_xact_lock` since there's no
-  unique constraint to catch two concurrent first-clicks creating duplicate
-  demo endpoints.
+  `lock_timeout`, so the live worker racing to claim the same just-committed row
+  can't cause a lost update; `find_or_create_demo_endpoint` guards its
+  check-then-insert with `pg_advisory_xact_lock` since there's no unique
+  constraint to catch two concurrent first actions creating duplicate demo
+  endpoints.
 - **No new trust boundary.** The receiver route only ever answers
-  200/401/404/500 for its own reserved (`__simulate__`-tagged) endpoints — it
-  never initiates a request — and `/simulate/run` is scoped by the caller's own
-  project API key exactly like every other authenticated endpoint.
+  200/401/404/503 for its own reserved (`__demo__`-tagged) endpoints — it never
+  initiates a request — and every `/simulate/*` control route is scoped by the
+  caller's own project API key exactly like every other authenticated endpoint.
+  Accepted requests are recorded in `DemoReceivedRequest` (a bounded per-endpoint
+  tail) and surfaced via `GET /simulate/inbox`.

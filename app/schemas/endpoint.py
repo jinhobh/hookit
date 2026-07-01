@@ -10,8 +10,8 @@ from pydantic import AnyHttpUrl, BaseModel, Field, field_validator
 from app.models.endpoint import EndpointStatus, PayloadFormat
 
 # Event types starting with this prefix are reserved for internal use (the
-# /simulate/run live-demo feature) so a real endpoint can never accidentally
-# subscribe to simulated traffic.
+# interactive dashboard demo tags its endpoint with the "__demo__" marker) so a
+# real endpoint can never accidentally subscribe to demo traffic.
 _RESERVED_EVENT_TYPE_PREFIX = "__"
 
 

@@ -71,22 +71,26 @@ how the deployment is wired.
 
 ## Try it yourself — no coding required
 
-**The fast path: two buttons, under 30 seconds, nothing to install.**
+**The fast path: nothing to install, no API key to copy, under 30 seconds.**
 
 1. **Open https://hookit.fly.dev/dashboard/**
-2. Click **"New demo project"** — mints a fresh project + API key and
-   connects; no Swagger detour.
-3. Click **"Simulate load"** — publishes a batch of real events through the
-   real pipeline. Watch the cards fill in live: most deliveries succeed
-   within a second, a couple genuinely retry with real exponential backoff
-   (~10s), and one is driven to dead-letter so you can click its **redrive**
-   link yourself and watch it recover (allow a few seconds — redrive doesn't
-   wake the worker instantly, it picks the delivery up on its next poll).
+2. Click **"Emit event"** — a demo project + API key are provisioned for you
+   automatically (no Swagger detour, nothing to paste), then a real
+   GitHub-style event (`push` / `pull_request` / `workflow_run`) is published
+   through the real pipeline and delivered to a stand-in "deploy pipeline" over
+   HMAC-signed HTTP. It lands in your pipeline's **inbox** — with its real
+   signature — and shows as a succeeded delivery on the console.
+3. Click **"Bring pipeline down"**, then keep emitting (or hit **"Live
+   traffic"**): deliveries now fail and you watch real retries with exponential
+   backoff. Hit **"force one to dead-letter"** to skip the wait and drop one
+   into the DLQ.
+4. Click **"Restore pipeline"**, then the **redrive** link on the dead-lettered
+   row — it recovers to succeeded on the next attempt.
 
-That's the whole reliability story — retry, backoff, dead-letter, redrive —
-happening in front of you. (This is unrelated to the [`demo/`](demo) CLI
-scripts elsewhere in this repo, which drive a real external receiver process
-from your terminal for local reliability testing — see below.)
+That's the whole reliability story — signed delivery, retry, backoff,
+dead-letter, redrive — driven by you, live. (This is unrelated to the
+[`demo/`](demo) CLI scripts elsewhere in this repo, which drive a real external
+receiver process from your terminal for local reliability testing — see below.)
 
 ### The manual path — and how to pipe events into Discord
 
@@ -129,19 +133,23 @@ It's backed by `GET /metrics/summary`, which aggregates the `deliveries` and
 numbers are durable and survive worker restarts — unlike the process-local
 Prometheus counters exposed at `/metrics`.
 
-Two buttons on the dashboard turn it from a passive viewer into a live demo:
-**"New demo project"** self-provisions a project + API key (`POST /projects` +
+The dashboard is also an interactive **Ops Console** demo. It self-provisions a
+project + API key on your first click (`POST /projects` +
 `POST /projects/{id}/api-keys`, both intentionally unauthenticated bootstrap
-endpoints), and **"Simulate load"** (`POST /simulate/run`) publishes a fixed
-batch of real events through the real pipeline — most succeed immediately, a
-couple retry once with genuine exponential backoff, and one is driven to
-dead-lettered so it can be redriven right there. The batch is delivered to a
-reserved, self-referential receiver endpoint (`POST /simulate/receiver/{id}`,
-HMAC-verified like any real receiver) rather than a third-party URL, so the
-demo has no external dependency. See `app/services/simulate.py` for exactly
-which parts are real production code paths versus an intentional, documented
-fast-forward of retry *timing* (not of signing, delivery, or dead-lettering
-logic) — detailed in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+endpoints — nothing to paste), then lets you drive the real pipeline:
+**"Emit event"** / **"Live traffic"** (`POST /simulate/events`) publish real
+GitHub-style events; a database-backed health toggle (`POST /simulate/health`)
+takes a stand-in "deploy pipeline" up or down so you can watch retries, backoff,
+and dead-lettering happen on real data; and **"force one to dead-letter"**
+(`POST /simulate/dead-letter`) skips the ~5-minute backoff wait so redrive
+recovery is watchable. Everything is delivered to a reserved, self-referential
+receiver (`POST /simulate/receiver/{id}`, HMAC-verified like any real receiver)
+rather than a third-party URL, so the demo has no external dependency — and the
+requests it accepts are shown, with their real signed headers and bodies, in a
+per-project inbox (`GET /simulate/inbox`). See `app/services/simulate.py` for
+exactly which parts are real production code paths versus an intentional,
+documented fast-forward of retry *timing* (not of signing, delivery, or
+dead-lettering logic) — detailed in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
 
@@ -279,13 +287,13 @@ and link-local/metadata ranges (`app/services/ssrf.py`). DNS-based SSRF
 (a hostname that *resolves* to a private address) is a known, documented
 limitation — out of scope until egress-time resolution checks are added.
 
-### Fast-forwarding the live simulation's dead-letter, honestly
+### Fast-forwarding the demo's dead-letter, honestly
 
-`POST /simulate/run` (`app/services/simulate.py`) publishes real events
+`POST /simulate/dead-letter` (`app/services/simulate.py`) publishes a real event
 through the real fan-out and delivery path — the same `ingest_event()` and
 `process_delivery()` production code the rest of the system uses, no test
-doubles. The one deliberate shortcut: the batch's "always fails" delivery is
-driven through its attempts back-to-back instead of waiting for real
+doubles. The one deliberate shortcut: with the demo pipeline taken down, that
+delivery is driven through its attempts back-to-back instead of waiting for real
 exponential backoff between them (with default settings, 6 attempts would
 otherwise take ~5 real minutes to exhaust), so a dashboard visitor gets a
 redrivable dead-lettered row in under a second. Signing, HTTP delivery,
@@ -447,8 +455,8 @@ exposition) and `GET /metrics/summary` (dashboard-facing aggregates),
 per-endpoint `rate_limit_rps` to throttle a slow receiver, per-endpoint
 `payload_format` (`raw` or `discord`) to transform outbound deliveries,
 `POST /endpoints/{id}/rotate-secret` for signing-secret rotation without
-downtime, and `POST /simulate/run` (project-scoped) which powers the
-dashboard's one-click live demo. Full endpoint list: `/docs`.
+downtime, and the `POST /simulate/*` routes (project-scoped) that power the
+dashboard's interactive Ops Console demo. Full endpoint list: `/docs`.
 
 ---
 
