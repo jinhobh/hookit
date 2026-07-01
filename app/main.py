@@ -38,6 +38,11 @@ def create_app() -> FastAPI:
     root_logger.handlers.clear()
     root_logger.addHandler(handler)
 
+    # httpx logs each request's full URL at INFO; outbound webhook URLs can embed
+    # credentials (e.g. a Discord webhook token), so keep it at WARNING to avoid
+    # leaking secrets into logs (see CLAUDE.md §9).
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
     application = FastAPI(
         title=settings.app_name,
         version="0.1.0",
