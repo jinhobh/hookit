@@ -8,8 +8,11 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 from app.db.base import Base
+from app.db.session import get_session
 from app.main import app
+from app.models.api_key import ApiKey, generate_api_key
 from app.models.delivery import Delivery, DeliveryStatus
+from app.models.delivery_attempt import DeliveryAttempt
 from app.models.endpoint import Endpoint, EndpointStatus
 from app.models.event import Event
 from app.models.project import Project
@@ -195,3 +198,156 @@ def test_duration_histogram_populated(met_db_session: Session) -> None:
 
     after = _sample("webhook_delivery_attempt_duration_seconds_count")
     assert after - before == 1.0
+
+
+# ---------------------------------------------------------------------------
+# Dashboard static page (no DB required)
+# ---------------------------------------------------------------------------
+
+
+def test_dashboard_page_served() -> None:
+    response = client.get("/dashboard/")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "Delivery Console" in response.text
+
+
+# ---------------------------------------------------------------------------
+# /metrics/summary aggregation endpoint (require Postgres)
+# ---------------------------------------------------------------------------
+
+
+def _make_project_and_key(session: Session, name: str) -> tuple[Project, str]:
+    project = Project(name=name)
+    session.add(project)
+    session.flush()
+    plaintext, prefix, key_hash = generate_api_key()
+    session.add(
+        ApiKey(project_id=project.id, name="test-key", key_prefix=prefix, key_hash=key_hash)
+    )
+    session.flush()
+    return project, plaintext
+
+
+def _make_delivery(
+    session: Session,
+    event: Event,
+    endpoint: Endpoint,
+    status: DeliveryStatus,
+    *,
+    attempt_count: int = 0,
+    updated_at: datetime | None = None,
+) -> Delivery:
+    delivery = Delivery(
+        event_id=event.id,
+        endpoint_id=endpoint.id,
+        status=status,
+        attempt_count=attempt_count,
+        next_attempt_at=datetime.now(UTC),
+    )
+    if updated_at is not None:
+        delivery.updated_at = updated_at
+    session.add(delivery)
+    session.flush()
+    return delivery
+
+
+def _make_attempt(
+    session: Session, delivery: Delivery, number: int, response_status: int, duration_ms: int
+) -> None:
+    session.add(
+        DeliveryAttempt(
+            delivery_id=delivery.id,
+            attempt_number=number,
+            response_status=response_status,
+            duration_ms=duration_ms,
+        )
+    )
+    session.flush()
+
+
+@pytest.fixture()
+def summary_client(met_db_session: Session) -> Generator[TestClient, None, None]:
+    def override() -> Generator[Session, None, None]:
+        yield met_db_session
+
+    app.dependency_overrides[get_session] = override
+    with TestClient(app) as c:
+        yield c
+    app.dependency_overrides.pop(get_session, None)
+
+
+def _auth(key: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {key}"}
+
+
+def test_summary_requires_auth(summary_client: TestClient) -> None:
+    assert summary_client.get("/metrics/summary").status_code == 401
+
+
+def test_summary_empty_project(summary_client: TestClient, met_db_session: Session) -> None:
+    _, key = _make_project_and_key(met_db_session, "summary-empty")
+
+    body = summary_client.get("/metrics/summary", headers=_auth(key)).json()
+
+    assert body["totals"] == {
+        "pending": 0,
+        "in_flight": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "dead_lettered": 0,
+        "all": 0,
+    }
+    assert body["success_rate"] is None
+    assert body["latency_ms"] is None
+    assert body["dlq_depth"] == 0
+    assert body["attempts_total"] == 0
+    assert body["throughput_per_min"] == 0.0
+
+
+def test_summary_aggregates_counts_and_latency(
+    summary_client: TestClient, met_db_session: Session
+) -> None:
+    project, key = _make_project_and_key(met_db_session, "summary-counts")
+    ep = _make_endpoint(met_db_session, project.id)
+    event = _make_event(met_db_session, project.id)
+
+    now = datetime.now(UTC)
+    # 3 succeeded (recent) + 1 dead-lettered + 1 pending.
+    succeeded = [
+        _make_delivery(met_db_session, event, ep, DeliveryStatus.succeeded, updated_at=now)
+        for _ in range(3)
+    ]
+    dead = _make_delivery(met_db_session, event, ep, DeliveryStatus.dead_lettered, attempt_count=3)
+    _make_delivery(met_db_session, event, ep, DeliveryStatus.pending)
+
+    for i, d in enumerate(succeeded):
+        _make_attempt(met_db_session, d, 1, 200, duration_ms=100 + i * 10)
+    for n in range(1, 4):  # dead-letter had 3 failing attempts
+        _make_attempt(met_db_session, dead, n, 500, duration_ms=50)
+
+    body = summary_client.get("/metrics/summary", headers=_auth(key)).json()
+
+    assert body["totals"]["succeeded"] == 3
+    assert body["totals"]["dead_lettered"] == 1
+    assert body["totals"]["pending"] == 1
+    assert body["totals"]["all"] == 5
+    assert body["dlq_depth"] == 1
+    assert body["attempts_total"] == 6  # 3 succeeded + 3 dead-letter attempts
+    assert body["success_rate"] == 0.75  # 3 succeeded / (3 + 1 terminal)
+    assert body["latency_ms"] is not None
+    assert 50 <= body["latency_ms"]["p50"] <= 120
+    assert body["throughput_per_min"] == 3.0
+
+
+def test_summary_scoped_to_project(summary_client: TestClient, met_db_session: Session) -> None:
+    # Another project's deliveries must not leak into this project's summary.
+    other, _ = _make_project_and_key(met_db_session, "summary-other")
+    other_ep = _make_endpoint(met_db_session, other.id)
+    other_event = _make_event(met_db_session, other.id)
+    _make_delivery(met_db_session, other_event, other_ep, DeliveryStatus.succeeded)
+
+    _, key = _make_project_and_key(met_db_session, "summary-mine")
+    body = summary_client.get("/metrics/summary", headers=_auth(key)).json()
+
+    assert body["totals"]["all"] == 0

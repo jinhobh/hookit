@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
 from app.middleware import RequestIDFilter, RequestIDMiddleware
 from app.routers import deliveries, endpoints, events, me, metrics, projects
+
+_STATIC_DIR = Path(__file__).parent / "static"
 
 
 def create_app() -> FastAPI:
@@ -51,6 +55,16 @@ def create_app() -> FastAPI:
     def health() -> dict[str, str]:
         """Liveness/readiness probe — no database calls."""
         return {"status": "ok"}
+
+    # Static, read-only observability dashboard (single-page vanilla JS). Served
+    # last so it never shadows an API route; `html=True` serves index.html at
+    # `/dashboard/`. The page authenticates against the JSON API with a project
+    # API key supplied by the viewer, so no data is exposed unauthenticated.
+    application.mount(
+        "/dashboard",
+        StaticFiles(directory=_STATIC_DIR, html=True),
+        name="dashboard",
+    )
 
     return application
 
