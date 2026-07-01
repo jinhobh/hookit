@@ -28,6 +28,13 @@ from app.services.api_keys import revoke_api_key
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
+def _get_project_or_404(project_id: uuid.UUID, session: Session) -> Project:
+    project = session.execute(select(Project).where(Project.id == project_id)).scalar_one_or_none()
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project
+
+
 @router.post("", status_code=201, response_model=ProjectResponse)
 def create_project(
     body: ProjectCreate,
@@ -44,6 +51,20 @@ def create_project(
     return ProjectResponse.model_validate(project)
 
 
+@router.get("/{project_id}", response_model=ProjectResponse)
+def get_project(
+    project_id: uuid.UUID,
+    session: Session = Depends(get_session),
+) -> ProjectResponse:
+    """Return a single project's details.
+
+    Admin/bootstrap endpoint — no authentication required in the MVP.
+    Returns 404 if the project does not exist.
+    """
+    project = _get_project_or_404(project_id, session)
+    return ProjectResponse.model_validate(project)
+
+
 @router.post("/{project_id}/api-keys", status_code=201, response_model=ApiKeyCreateResponse)
 def create_api_key(
     project_id: uuid.UUID,
@@ -56,9 +77,7 @@ def create_api_key(
     The plaintext key is returned exactly once and never stored or logged.
     Returns 404 if the project does not exist.
     """
-    project = session.execute(select(Project).where(Project.id == project_id)).scalar_one_or_none()
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = _get_project_or_404(project_id, session)
 
     plaintext, key_prefix, key_hash = generate_api_key()
     api_key = ApiKey(
@@ -90,9 +109,7 @@ def list_api_keys(
     Returns 404 if the project does not exist.
     key_hash is never included in responses.
     """
-    project = session.execute(select(Project).where(Project.id == project_id)).scalar_one_or_none()
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
+    _get_project_or_404(project_id, session)
 
     api_keys = (
         session.execute(
