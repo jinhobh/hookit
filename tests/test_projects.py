@@ -86,6 +86,47 @@ def test_create_project_no_auth_required(client: TestClient) -> None:
 
 
 # ---------------------------------------------------------------------------
+# GET /projects/{project_id}
+# ---------------------------------------------------------------------------
+
+
+def test_get_project_returns_200(client: TestClient) -> None:
+    create_resp = client.post("/projects", json={"name": "detail-project"})
+    assert create_resp.status_code == 201
+    project_id = create_resp.json()["id"]
+
+    resp = client.get(f"/projects/{project_id}")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["id"] == project_id
+    assert data["name"] == "detail-project"
+    assert "created_at" in data
+
+
+def test_get_project_response_shape(client: TestClient) -> None:
+    create_resp = client.post("/projects", json={"name": "detail-shape"})
+    project_id = create_resp.json()["id"]
+
+    resp = client.get(f"/projects/{project_id}")
+    assert resp.status_code == 200
+    assert set(resp.json().keys()) == {"id", "name", "created_at"}
+
+
+def test_get_project_nonexistent_returns_404(client: TestClient) -> None:
+    fake_id = str(uuid.uuid4())
+    resp = client.get(f"/projects/{fake_id}")
+    assert resp.status_code == 404
+    assert "not found" in resp.json()["detail"].lower()
+
+
+def test_get_project_no_auth_required(client: TestClient) -> None:
+    create_resp = client.post("/projects", json={"name": "detail-no-auth"})
+    project_id = create_resp.json()["id"]
+    resp = client.get(f"/projects/{project_id}")
+    assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
 # POST /projects/{project_id}/api-keys
 # ---------------------------------------------------------------------------
 
