@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from datetime import UTC, datetime
 
 from fastapi import Depends, HTTPException
@@ -11,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
-from app.models.api_key import ApiKey
+from app.models.api_key import ApiKey, hash_api_key
 from app.models.project import Project
 
 _bearer = HTTPBearer(auto_error=False)
@@ -39,7 +38,7 @@ def get_current_project(
         raise _401
 
     token = credentials.credentials
-    key_hash = hashlib.sha256(token.encode()).hexdigest()
+    key_hash = hash_api_key(token)
 
     api_key = session.execute(
         select(ApiKey).where(ApiKey.key_hash == key_hash)

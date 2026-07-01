@@ -1,11 +1,13 @@
 # Fly.io deployment for the Reliable Webhook Delivery Platform.
 #
-# Two process groups run from the SAME image:
-#   - app    : the FastAPI HTTP API (ingestion, CRUD, inspection)
-#   - worker : the delivery loop (claims due deliveries, signs + POSTs, retries)
+# Three process groups run from the SAME image:
+#   - app      : the FastAPI HTTP API (ingestion, CRUD, inspection, /showcase/*)
+#   - worker   : the delivery loop (claims due deliveries, signs + POSTs, retries)
+#   - producer : the live-showcase producer (polls real crypto prices, POSTs
+#                real events to /events, exposes POST /burst over private networking)
 #
-# Migrations run once per deploy via [deploy].release_command, before the new
-# version takes traffic. See docs/DEPLOY.md for the full step-by-step.
+# Migrations + showcase seeding run once per deploy via [deploy].release_command,
+# before the new version takes traffic. See docs/DEPLOY.md for the full step-by-step.
 #
 # Rename `app` below to your actual Fly app name (set by `fly launch`).
 
@@ -16,18 +18,30 @@ primary_region = "iad"  # change to a region near you / your Postgres
   dockerfile = "Dockerfile"
 
 [deploy]
-  # Runs in a temporary machine on the new image before release. Idempotent.
-  release_command = "alembic upgrade head"
+  # Runs in a temporary machine on the new image before release. Both idempotent:
+  # migrate the schema, then seed the shared showcase project/endpoints/key.
+  release_command = "sh -c 'alembic upgrade head && python -m app.seed_showcase'"
 
 [processes]
   app = "uvicorn app.main:app --host 0.0.0.0 --port 8000"
   worker = "python -m app.worker"
+  producer = "python -m producer"
 
-# Non-secret config. PUBLIC_BASE_URL is this app's own public hostname, used to
-# build the self-referential receiver URL for the dashboard's interactive demo
-# (the POST /simulate/* Ops Console routes).
+# Non-secret config (applies to all process groups). Secrets are set separately
+# with `fly secrets set` — see docs/DEPLOY.md:
+#   SHOWCASE_API_KEY, PLATFORM_API_KEY (same value), SHOWCASE_DISCORD_WEBHOOK_URL.
 [env]
+  # This app's own public hostname, used to build the controllable receiver URL
+  # for the /showcase/* demo routes.
   PUBLIC_BASE_URL = "https://hookit.fly.dev"
+  # The producer publishes to the real public ingestion API over HTTPS.
+  PLATFORM_API_URL = "https://hookit.fly.dev"
+  # The app proxies POST /showcase/burst to the producer over Fly private
+  # networking (6PN); the producer's control server binds 0.0.0.0:8100.
+  PRODUCER_BASE_URL = "http://producer.process.hookit.internal:8100"
+  # Public Discord server/channel ids for the dashboard's embedded live widget.
+  DISCORD_WIDGET_SERVER_ID = "1522017033871687811"
+  DISCORD_WIDGET_CHANNEL_ID = "1522017123298185451"
 
 # HTTP is served only by the `app` process group.
 [http_service]

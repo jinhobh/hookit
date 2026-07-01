@@ -113,9 +113,48 @@ class Settings(BaseSettings):
             "hostname (e.g. 'https://hookit.fly.dev' or 'http://localhost:8000'), "
             "never an IP literal — validate_url_not_ssrf only blocks IP-literal "
             "loopback/private/link-local hosts, so an IP-literal value here would "
-            "cause every simulated delivery to dead-letter instantly on the SSRF "
+            "cause every demo delivery to dead-letter instantly on the SSRF "
             "check instead of reaching the receiver."
         ),
+    )
+
+    # --- Live showcase (real producer → real Discord) ----------------------
+    # The dashboard's live demo is fed by the separate `producer` service and
+    # delivers real price alerts to a real Discord channel. One shared, seeded
+    # "showcase" project backs it (see app/services/showcase.py + app/seed_showcase.py).
+    showcase_project_name: str = Field(
+        default="__showcase__",
+        description="Stable, unique name of the seeded shared showcase project.",
+    )
+    showcase_api_key: str = Field(
+        default="",
+        description=(
+            "Shared API key for the showcase project (secret). The seeder stores its "
+            "hash so the `producer` service can authenticate with this same value. "
+            "Empty disables seeding of the key."
+        ),
+    )
+    showcase_discord_webhook_url: str = Field(
+        default="",
+        description=(
+            "Real Discord webhook URL the showcase delivers price alerts to (secret). "
+            "Empty disables the Discord endpoint (the reliability demo still works)."
+        ),
+    )
+    producer_base_url: str = Field(
+        default="http://localhost:8100",
+        description=(
+            "Internal base URL of the `producer` control server. POST /showcase/burst "
+            "proxies to '{producer_base_url}/burst' so the producer need not be public."
+        ),
+    )
+    discord_widget_server_id: str = Field(
+        default="",
+        description="Public Discord server (guild) id for the dashboard's embedded channel widget.",
+    )
+    discord_widget_channel_id: str = Field(
+        default="",
+        description="Public Discord channel id for the dashboard's embedded channel widget.",
     )
 
 

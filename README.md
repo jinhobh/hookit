@@ -72,21 +72,20 @@ how the deployment is wired.
 **The fast path: nothing to install, no API key to copy, under 30 seconds.**
 
 1. **Open https://hookit.fly.dev/dashboard/**
-2. Click **"Emit event"** — a demo project + API key are provisioned for you
-   automatically (no Swagger detour, nothing to paste), then a real
-   GitHub-style event (`push` / `pull_request` / `workflow_run`) is published
-   through the real pipeline and delivered to a stand-in "deploy pipeline" over
-   HMAC-signed HTTP. It lands in your pipeline's **inbox** — with its real
-   signature — and shows as a succeeded delivery on the console.
-3. Click **"Bring pipeline down"**, then keep emitting (or hit **"Live
-   traffic"**): deliveries now fail and you watch real retries with exponential
-   backoff. Hit **"force one to dead-letter"** to skip the wait and drop one
-   into the DLQ.
-4. Click **"Restore pipeline"**, then the **redrive** link on the dead-lettered
-   row — it recovers to succeeded on the next attempt.
+2. Watch the **live price feed** — a separate `producer` service is already
+   polling real crypto prices and POSTing them to the platform's real
+   `POST /events` API. Meaningful moves are delivered, HMAC-signed, to a real
+   **Discord channel** embedded right on the page. Nothing to install or paste.
+3. Click **"Generate load ⚡"** to ask the producer to fire a rapid burst, and
+   watch throughput and the Discord channel light up.
+4. Click **"Bring pipeline down"**: the controllable receiver now returns 503 and
+   you watch real retries with exponential backoff in the signed-request inbox.
+   Hit **"force one to dead-letter"** to skip the wait and drop one into the DLQ.
+5. Click **"Restore pipeline"**, then **"redrive dead-letters"** — the delivery
+   recovers to succeeded on the next attempt.
 
 That's the whole reliability story — signed delivery, retry, backoff,
-dead-letter, redrive — driven by you, live. (This is unrelated to the
+dead-letter, redrive — on genuinely live traffic. (This is unrelated to the
 [`demo/`](demo) CLI scripts elsewhere in this repo, which drive a real external
 receiver process from your terminal for local reliability testing — see below.)
 
@@ -110,44 +109,52 @@ into a Discord channel and watch them arrive as chat messages.
 5. **Publish an event** — expand `POST /events`, set a body like
    `{"type": "demo.ping", "payload": {"hello": "world"}}`, *Execute*.
 6. Watch the message show up in your Discord channel within a couple of
-   seconds — and watch the delivery succeed on the
-   [dashboard](https://hookit.fly.dev/dashboard/) (paste in the same API key).
+   seconds. For a fully live, zero-setup version driven by real market data, see
+   the [showcase dashboard](https://hookit.fly.dev/dashboard/).
 
 No terminal, no code — just filling in forms on a web page.
 
 ---
 
-## Observability dashboard
+## Live showcase dashboard
 
-A console at `/dashboard/` visualizes delivery health for a project: status
-totals, terminal success rate, p50/p95/p99 latency, dead-letter depth,
-one-minute throughput, and expandable per-delivery retry timelines with inline
-redrive. It's a static single-page app that authenticates against the JSON API
-with a project API key — the same key used for `/events` and `/endpoints` — so
-no data is exposed unauthenticated.
+A console at `/dashboard/` drives and visualizes the platform live: the real
+crypto price feed flowing in from the `producer` service, delivery-health metrics
+(status totals, terminal success rate, p50/p95/p99 latency, dead-letter depth,
+one-minute throughput), the receiver's inbox of signed requests, and an embedded
+live view of the real Discord channel. It's a static single-page app that reads
+the public, key-less `/showcase/*` routes — all hard-scoped to the seeded
+showcase project, so no real customer data is exposed and there's nothing to
+paste.
 
-It's backed by `GET /metrics/summary`, which aggregates the `deliveries` and
-`delivery_attempts` tables directly (via `percentile_cont` for latency), so the
-numbers are durable and survive worker restarts — unlike the process-local
-Prometheus counters exposed at `/metrics`.
+The metrics come from the same `delivery_summary()` aggregation as
+`GET /metrics/summary` (surfaced key-lessly at `GET /showcase/summary`), which
+reads the `deliveries` and `delivery_attempts` tables directly (via
+`percentile_cont` for latency), so the numbers are durable and survive worker
+restarts — unlike the process-local Prometheus counters exposed at `/metrics`.
+Project-scoped observability with your own key is still available directly via
+`GET /metrics/summary`.
 
-The dashboard is also an interactive **Ops Console** demo. It self-provisions a
-project + API key on your first click (`POST /projects` +
-`POST /projects/{id}/api-keys`, both intentionally unauthenticated bootstrap
-endpoints — nothing to paste), then lets you drive the real pipeline:
-**"Emit event"** / **"Live traffic"** (`POST /simulate/events`) publish real
-GitHub-style events; a database-backed health toggle (`POST /simulate/health`)
-takes a stand-in "deploy pipeline" up or down so you can watch retries, backoff,
-and dead-lettering happen on real data; and **"force one to dead-letter"**
-(`POST /simulate/dead-letter`) skips the ~5-minute backoff wait so redrive
-recovery is watchable. Everything is delivered to a reserved, self-referential
-receiver (`POST /simulate/receiver/{id}`, HMAC-verified like any real receiver)
-rather than a third-party URL, so the demo has no external dependency — and the
-requests it accepts are shown, with their real signed headers and bodies, in a
-per-project inbox (`GET /simulate/inbox`). See `app/services/simulate.py` for
-exactly which parts are real production code paths versus an intentional,
-documented fast-forward of retry *timing* (not of signing, delivery, or
-dead-lettering logic) — detailed in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+The dashboard is also a **live showcase** — genuinely end-to-end, not simulated.
+A separate `producer` service (`python -m producer`, its own Fly process group)
+polls **real crypto prices** from a keyless public API and POSTs them to this
+platform's real public `POST /events` API with a real key — external traffic from
+a real client. The platform HMAC-signs each delivery and fans it out to two
+endpoints on a shared, seeded "showcase" project: a real **Discord** endpoint
+(`payload_format=discord`) that receives `price.alert` events so meaningful moves
+land in a real Discord channel (embedded live in the dashboard), and a
+**controllable receiver** that receives every `price.tick`. The public,
+key-less `/showcase/*` routes let any visitor drive the reliability story: a
+database-backed health toggle (`POST /showcase/health`) takes the receiver up or
+down to watch retries, backoff, and dead-lettering on live data;
+`POST /showcase/dead-letter` skips the ~5-minute backoff wait so redrive recovery
+is watchable; `POST /showcase/redrive` recovers it; and `POST /showcase/burst`
+proxies a load spike to the producer. The requests the receiver accepts are shown
+with their real signed headers and bodies (`GET /showcase/feed`). See
+`app/services/showcase.py` and `producer/` for exactly which parts are real
+production code paths versus an intentional, documented fast-forward of retry
+*timing* (not of signing, delivery, or dead-lettering logic) — detailed in
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
 
@@ -287,10 +294,10 @@ limitation — out of scope until egress-time resolution checks are added.
 
 ### Fast-forwarding the demo's dead-letter, honestly
 
-`POST /simulate/dead-letter` (`app/services/simulate.py`) publishes a real event
+`POST /showcase/dead-letter` (`app/services/showcase.py`) publishes a real event
 through the real fan-out and delivery path — the same `ingest_event()` and
 `process_delivery()` production code the rest of the system uses, no test
-doubles. The one deliberate shortcut: with the demo pipeline taken down, that
+doubles. The one deliberate shortcut: with the showcase pipeline taken down, that
 delivery is driven through its attempts back-to-back instead of waiting for real
 exponential backoff between them (with default settings, 6 attempts would
 otherwise take ~5 real minutes to exhaust), so a dashboard visitor gets a
@@ -453,8 +460,9 @@ exposition) and `GET /metrics/summary` (dashboard-facing aggregates),
 per-endpoint `rate_limit_rps` to throttle a slow receiver, per-endpoint
 `payload_format` (`raw` or `discord`) to transform outbound deliveries,
 `POST /endpoints/{id}/rotate-secret` for signing-secret rotation without
-downtime, and the `POST /simulate/*` routes (project-scoped) that power the
-dashboard's interactive Ops Console demo. Full endpoint list: `/docs`.
+downtime, and the public `/showcase/*` routes (scoped to the seeded showcase
+project) that power the dashboard's live producer → Discord demo. Full endpoint
+list: `/docs`.
 
 ---
 

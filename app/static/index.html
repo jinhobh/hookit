@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>HOOKIT · Delivery Console</title>
+    <title>HOOKIT · Live Delivery Console</title>
     <style>
       :root {
         --bg: #0b0e14;
@@ -40,7 +40,7 @@
       .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; }
       .dot.live { background: var(--green); box-shadow: 0 0 8px var(--green); }
       .spacer { flex: 1; }
-      input, select {
+      input {
         background: var(--panel-2);
         border: 1px solid var(--border);
         color: var(--text);
@@ -59,18 +59,15 @@
       }
       button.ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
       button.danger { background: var(--red); }
-      button.warn { background: var(--amber); }
       button:disabled { opacity: 0.5; cursor: default; }
-      main { padding: 22px; max-width: 1240px; margin: 0 auto; }
+      main { padding: 22px; max-width: 1300px; margin: 0 auto; }
 
-      /* Advanced disclosure (bring-your-own key) */
       details.adv { color: var(--muted); }
       details.adv summary { cursor: pointer; font-size: 12px; list-style: none; }
       details.adv summary::-webkit-details-marker { display: none; }
       details.adv .adv-body { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
-      details.adv input#key { width: 240px; }
+      details.adv input#base { width: 260px; }
 
-      /* Ops console control panel */
       .console {
         background: var(--panel);
         border: 1px solid var(--border);
@@ -78,7 +75,7 @@
         padding: 16px 18px;
         margin-bottom: 20px;
       }
-      .console .intro { color: var(--muted); font-size: 13px; margin: 0 0 14px; max-width: 900px; }
+      .console .intro { color: var(--muted); font-size: 13px; margin: 0 0 14px; max-width: 960px; }
       .console .intro strong { color: var(--text); }
       .console code { background: var(--panel-2); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; font-size: 12px; color: var(--blue); }
       .controls { display: flex; gap: 26px; flex-wrap: wrap; align-items: center; }
@@ -88,7 +85,6 @@
       .pill.up { color: var(--green); background: rgba(52,211,153,0.12); }
       .pill.down { color: var(--red); background: rgba(248,113,113,0.12); }
       a.dlq-link { color: var(--red); font-size: 13px; text-decoration: none; border-bottom: 1px dashed var(--red); }
-      .hint { color: var(--muted); font-size: 12px; }
 
       .cards {
         display: grid;
@@ -104,31 +100,32 @@
       .value.red { color: var(--red); }
       .value.amber { color: var(--amber); }
 
-      .grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 22px; align-items: start; }
-      @media (max-width: 940px) { .grid { grid-template-columns: 1fr; } }
+      .grid { display: grid; grid-template-columns: 1.35fr 1fr; gap: 22px; align-items: start; }
+      @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
       .section-title { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 10px 2px; }
-
-      table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 12px; overflow: hidden; }
-      th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); }
-      th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
-      tr:last-child td { border-bottom: none; }
-      td.mono, .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; }
-      .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; text-transform: capitalize; }
-      .badge.succeeded { background: rgba(52,211,153,0.15); color: var(--green); }
-      .badge.dead_lettered { background: rgba(248,113,113,0.15); color: var(--red); }
-      .badge.failed { background: rgba(251,191,36,0.15); color: var(--amber); }
-      .badge.in_flight { background: rgba(96,165,250,0.15); color: var(--blue); }
-      .badge.pending { background: rgba(148,163,184,0.15); color: var(--slate); }
-      .attempts { background: var(--panel-2); }
-      .attempts td { padding: 0; }
-      .attempts table { background: transparent; border-radius: 0; }
-      .attempts th, .attempts td { border-bottom: 1px solid var(--border); }
-      .status-code { font-weight: 600; }
-      .status-code.ok { color: var(--green); }
-      .status-code.err { color: var(--red); }
-      .msg { color: var(--muted); padding: 34px; text-align: center; }
+      .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; }
+      .msg { color: var(--muted); padding: 30px; text-align: center; }
       .msg.error { color: var(--red); }
-      a.link { color: var(--accent); text-decoration: none; }
+
+      /* Live price feed */
+      .feed { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 22px; }
+      .feed-row { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--border); }
+      .feed-row:last-child { border-bottom: none; }
+      .feed-row .tag { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 2px 7px; border-radius: 999px; }
+      .feed-row .tag.tick { color: var(--slate); background: rgba(148,163,184,0.14); }
+      .feed-row .tag.alert { color: var(--amber); background: rgba(251,191,36,0.16); }
+      .feed-row .sym { color: var(--text); min-width: 78px; }
+      .feed-row .px { color: var(--text); min-width: 96px; }
+      .feed-row .chg { min-width: 74px; }
+      .feed-row .chg.green { color: var(--green); }
+      .feed-row .chg.red { color: var(--red); }
+      .feed-row .chg.muted { color: var(--muted); }
+      .feed-row .time { color: var(--muted); margin-left: auto; }
+
+      /* Embedded Discord */
+      .discord { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+      .discord iframe { width: 100%; height: 560px; border: 0; display: block; }
+      .discord .msg { padding: 40px 24px; }
 
       /* Request inbox */
       .inbox { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
@@ -142,6 +139,9 @@
       .inbox-head .sig.ok { color: var(--green); }
       .inbox-head .sig.err { color: var(--red); }
       .inbox-head .time { color: var(--muted); margin-left: auto; }
+      .status-code { font-weight: 600; }
+      .status-code.ok { color: var(--green); }
+      .status-code.err { color: var(--red); }
       .inbox-body { padding: 0 14px 14px; }
       .inbox-body .hdrs { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 12px; white-space: pre-wrap; word-break: break-all; color: var(--slate); }
       .inbox-body .hdrs .hk { color: var(--muted); }
@@ -150,16 +150,14 @@
   </head>
   <body>
     <header>
-      <div class="brand">HOOK<span>IT</span> · Delivery Console</div>
+      <div class="brand">HOOK<span>IT</span> · Live Delivery Console</div>
       <span id="live-dot" class="dot" title="polling status"></span>
       <div class="spacer"></div>
       <details class="adv">
         <summary>⚙ Advanced</summary>
         <div class="adv-body">
-          <input id="base" placeholder="API base (blank = same origin)" title="Optional API base URL" />
-          <input id="key" type="password" placeholder="Bring your own project API key" />
-          <button id="save-key" class="ghost">Use key</button>
-          <button id="reset" class="ghost" title="Forget the auto-provisioned demo project and start fresh">Reset demo</button>
+          <input id="base" placeholder="API base (blank = same origin)" title="Optional API base URL for self-hosting" />
+          <button id="save-base" class="ghost">Use base</button>
         </div>
       </details>
     </header>
@@ -167,48 +165,46 @@
     <main>
       <section class="console">
         <p class="intro">
-          <strong>Deploy-pipeline demo.</strong> Publish real GitHub events —
-          <code>push</code>, <code>pull_request</code>, <code>workflow_run</code> — and the
-          platform delivers each one to your pipeline over HMAC-signed HTTP. Take the pipeline
-          <em>down</em> to watch retries, exponential backoff, and the dead-letter queue; bring it
-          back <em>up</em> and redrive to recover. No signup, no API key — a demo project is
-          created for you on your first click.
+          <strong>This is live.</strong> A separate <code>producer</code> service polls real
+          crypto prices and POSTs them to this platform's public <code>POST /events</code> API — real
+          traffic from a real client. The platform HMAC-signs each delivery and fans it out to a real
+          <strong>Discord</strong> channel (price alerts, shown on the right) and to a pipeline you
+          control below. Take that pipeline <em>down</em> to watch retries, exponential backoff, and
+          the dead-letter queue on live data; bring it back <em>up</em> and redrive to recover.
         </p>
         <div class="controls">
           <div class="cgroup">
             <span class="cg-label">Traffic</span>
-            <select id="evt-type" title="Event type to publish">
-              <option value="">Random event</option>
-              <option value="push">push</option>
-              <option value="pull_request">pull_request</option>
-              <option value="workflow_run">workflow_run</option>
-            </select>
-            <button id="emit-btn" title="Publish one real event">Emit event</button>
-            <button id="burst-btn" class="ghost" title="Publish a burst of 15 events">Burst ×15</button>
-            <button id="live-btn" class="ghost" title="Publish an event every 1.5s">Live traffic ▶</button>
+            <button id="burst-btn" title="Ask the producer to fire a rapid burst of events">Generate load ⚡</button>
           </div>
           <div class="cgroup">
             <span class="cg-label">Your pipeline</span>
             <span id="health-pill" class="pill up">● Healthy</span>
-            <button id="health-btn" class="ghost">Bring pipeline down</button>
+            <button id="health-btn" class="danger">Bring pipeline down</button>
             <a id="force-dlq" class="dlq-link" href="#" hidden>force one to dead-letter →</a>
+            <a id="redrive-link" class="dlq-link" href="#" hidden style="color: var(--accent); border-color: var(--accent);">redrive dead-letters →</a>
           </div>
         </div>
       </section>
 
       <div id="cards" class="cards"></div>
 
+      <p class="section-title">Live price feed · real events published to <code>POST /events</code></p>
+      <div id="feed-wrap" class="feed">
+        <p class="msg">Waiting for the producer's first ticks…</p>
+      </div>
+
       <div class="grid">
         <div>
-          <p class="section-title">Recent deliveries</p>
-          <div id="table-wrap">
-            <p class="msg">Click <strong>Emit event</strong> to publish your first webhook.</p>
+          <p class="section-title">Your pipeline's inbox · signed requests received</p>
+          <div id="inbox-wrap" class="inbox">
+            <p class="msg">Deliveries that reach your endpoint show up here — with their real signature.</p>
           </div>
         </div>
         <div>
-          <p class="section-title">Your pipeline’s inbox · signed requests received</p>
-          <div id="inbox-wrap" class="inbox">
-            <p class="msg">Deliveries that reach your endpoint show up here — with their real signature.</p>
+          <p class="section-title">Real Discord channel · price alerts delivered live</p>
+          <div id="discord-wrap" class="discord">
+            <p class="msg">Discord embed not configured. Set <code>DISCORD_WIDGET_SERVER_ID</code> and <code>DISCORD_WIDGET_CHANNEL_ID</code>.</p>
           </div>
         </div>
       </div>
@@ -216,26 +212,20 @@
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const KEY_LS = "hookit_key";
       const BASE_LS = "hookit_base";
-      const AUTO_LS = "hookit_auto"; // "1" when the key was auto-provisioned
-      const LIVE_MAX = 40; // cap auto-emitted events so the demo DB stays bounded
 
-      let expanded = null; // delivery id whose attempts are shown
       const inboxOpen = new Set(); // received-request ids expanded
       let health = true; // last-known pipeline health
+      let dlqDepth = 0; // last-known dead-letter depth
       let timer = null;
-      let liveTimer = null;
-      let liveCount = 0;
+      let discordLoaded = false;
 
-      $("key").value = localStorage.getItem(KEY_LS) || "";
       $("base").value = localStorage.getItem(BASE_LS) || "";
 
       // ---- helpers -------------------------------------------------------
       function apiBase() { return (localStorage.getItem(BASE_LS) || "").replace(/\/$/, ""); }
-      function authHeaders() { return { Authorization: "Bearer " + (localStorage.getItem(KEY_LS) || "") }; }
       async function api(path, opts = {}) {
-        const res = await fetch(apiBase() + path, { ...opts, headers: { ...authHeaders(), ...(opts.headers || {}) } });
+        const res = await fetch(apiBase() + path, opts);
         if (!res.ok) throw Object.assign(new Error("HTTP " + res.status), { status: res.status });
         return res.status === 204 ? null : res.json();
       }
@@ -247,88 +237,32 @@
         const d = new Date(iso);
         return d.toLocaleTimeString([], { hour12: false }) + "." + String(d.getMilliseconds()).padStart(3, "0");
       }
-      function shortId(id) { return id.slice(0, 8); }
-
-      // ---- zero-friction provisioning ------------------------------------
-      async function ensureKey() {
-        if (localStorage.getItem(KEY_LS)) return;
-        const project = await api("/projects", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: "dashboard-demo-" + Date.now() }),
-        });
-        const apiKey = await api(`/projects/${project.id}/api-keys`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: "dashboard" }),
-        });
-        localStorage.setItem(KEY_LS, apiKey.key);
-        localStorage.setItem(AUTO_LS, "1");
+      function fmtPrice(v, quote) {
+        const n = Number(v);
+        if (!isFinite(n)) return esc(v);
+        const digits = n >= 100 ? 2 : n >= 1 ? 3 : 5;
+        const s = n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: digits });
+        return (quote === "USD" || !quote) ? "$" + s : s + " " + quote;
       }
-      async function ensureStarted() {
-        await ensureKey();
-        if (!timer) startPolling();
-      }
-      // Run an action after guaranteeing a project/key exists; surfaces errors.
-      async function withKey(btn, label, fn) {
+      async function act(btn, label, fn) {
         const prev = btn ? btn.textContent : null;
         if (btn) { btn.disabled = true; if (label) btn.textContent = label; }
-        try { await ensureStarted(); await fn(); await refresh(); }
+        try { await fn(); await refresh(); }
         catch (e) { alert((label || "Action") + " failed: " + (e.status ? "HTTP " + e.status : e.message)); }
         finally { if (btn) { btn.disabled = false; if (prev !== null) btn.textContent = prev; } }
       }
 
-      // ---- traffic controls ----------------------------------------------
-      function selectedType() { const v = $("evt-type").value; return v === "" ? null : v; }
-
-      $("emit-btn").addEventListener("click", () =>
-        withKey($("emit-btn"), "Emitting…", () =>
-          api("/simulate/events", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ event_type: selectedType(), count: 1 }),
-          })));
-
+      // ---- traffic + reliability controls --------------------------------
       $("burst-btn").addEventListener("click", () =>
-        withKey($("burst-btn"), "Bursting…", () =>
-          api("/simulate/events", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ event_type: selectedType(), count: 15 }),
-          })));
+        act($("burst-btn"), "Generating…", async () => {
+          const r = await api("/showcase/burst", { method: "POST" });
+          if (!r || !r.published) alert("Producer unreachable — no burst fired. Is `python -m producer` running?");
+        }));
 
-      $("live-btn").addEventListener("click", async () => {
-        if (liveTimer) return stopLive();
-        try { await ensureStarted(); } catch (e) { return alert("Could not start: " + e.message); }
-        liveCount = 0;
-        $("live-btn").textContent = "Live traffic ⏸";
-        $("live-btn").classList.remove("ghost");
-        const tick = async () => {
-          if (liveCount >= LIVE_MAX) return stopLive();
-          liveCount++;
-          try {
-            await api("/simulate/events", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ event_type: null, count: 1 }),
-            });
-          } catch (_) { /* transient; keep streaming */ }
-        };
-        tick();
-        liveTimer = setInterval(tick, 1500);
-      });
-      function stopLive() {
-        if (liveTimer) clearInterval(liveTimer);
-        liveTimer = null;
-        $("live-btn").textContent = "Live traffic ▶";
-        $("live-btn").classList.add("ghost");
-      }
-
-      // ---- pipeline health -----------------------------------------------
       $("health-btn").addEventListener("click", () => {
-        const next = !health; // toggle
-        withKey($("health-btn"), next ? "Restoring…" : "Bringing down…", async () => {
-          const r = await api("/simulate/health", {
+        const next = !health;
+        act($("health-btn"), next ? "Restoring…" : "Bringing down…", async () => {
+          const r = await api("/showcase/health", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ healthy: next }),
@@ -340,12 +274,23 @@
 
       $("force-dlq").addEventListener("click", (e) => {
         e.preventDefault();
-        withKey(null, null, async () => {
-          try { await api("/simulate/dead-letter", { method: "POST" }); }
+        act(null, null, async () => {
+          try { await api("/showcase/dead-letter", { method: "POST" }); }
           catch (err) {
             if (err.status === 409) { alert("Bring the pipeline down first."); return; }
             throw err;
           }
+        });
+      });
+
+      $("redrive-link").addEventListener("click", (e) => {
+        e.preventDefault();
+        act(null, null, async () => {
+          await api("/showcase/redrive", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          });
         });
       });
 
@@ -361,18 +306,13 @@
           btn.textContent = "Restore pipeline"; btn.className = "";
           $("force-dlq").hidden = false;
         }
+        $("redrive-link").hidden = dlqDepth === 0;
       }
 
-      // ---- advanced (bring your own key) ---------------------------------
-      $("save-key").addEventListener("click", () => {
-        const k = $("key").value.trim();
+      // ---- advanced (self-host base override) ----------------------------
+      $("save-base").addEventListener("click", () => {
         localStorage.setItem(BASE_LS, $("base").value.trim());
-        if (k) { localStorage.setItem(KEY_LS, k); localStorage.removeItem(AUTO_LS); }
-        stopLive(); start();
-      });
-      $("reset").addEventListener("click", () => {
-        localStorage.removeItem(KEY_LS); localStorage.removeItem(AUTO_LS);
-        $("key").value = ""; stopLive(); health = true; renderHealth(); start();
+        discordLoaded = false; start();
       });
 
       // ---- rendering: metrics cards --------------------------------------
@@ -397,55 +337,26 @@
           statCard("Throughput", s.throughput_per_min.toFixed(0), "", "succeeded / min");
       }
 
-      // ---- rendering: deliveries table -----------------------------------
-      function attemptRow(a) {
-        const codeCls = a.response_status == null ? "err" : a.response_status < 400 ? "ok" : "err";
-        const code = a.response_status == null ? (a.error ? "ERR" : "—") : a.response_status;
-        return `<tr><td class="mono">#${a.attempt_number}</td>` +
-          `<td class="status-code ${codeCls}">${code}</td>` +
-          `<td class="mono">${a.duration_ms == null ? "—" : a.duration_ms + " ms"}</td>` +
-          `<td class="mono">${fmtTime(a.created_at)}</td>` +
-          `<td class="mono">${esc((a.error || "").slice(0, 80))}</td></tr>`;
+      // ---- rendering: live price feed ------------------------------------
+      function feedRow(e) {
+        const p = e.payload || {};
+        const dir = p.direction;
+        const arrow = dir === "up" ? "▲" : dir === "down" ? "▼" : "•";
+        const cls = dir === "up" ? "green" : dir === "down" ? "red" : "muted";
+        const isAlert = e.type === "price.alert";
+        const price = p.price != null ? fmtPrice(p.price, p.quote) : "";
+        const pct = p.change_pct != null ? p.change_pct + "%" : "";
+        return `<div class="feed-row">` +
+          `<span class="tag ${isAlert ? "alert" : "tick"}">${isAlert ? "alert" : "tick"}</span>` +
+          `<span class="sym mono">${esc(p.symbol || e.type)}</span>` +
+          `<span class="px mono">${esc(price)}</span>` +
+          `<span class="chg ${cls} mono">${arrow} ${esc(pct)}</span>` +
+          `<span class="time mono">${fmtTime(e.created_at)}</span></div>`;
       }
-      function deliveryRow(d) {
-        const canRedrive = d.status === "dead_lettered";
-        const actions =
-          `<a class="link" href="#" data-view="${d.id}">${expanded === d.id ? "hide" : "attempts"}</a>` +
-          (canRedrive ? ` · <a class="link" href="#" data-redrive="${d.id}">redrive</a>` : "");
-        return `<tr>` +
-          `<td class="mono">${shortId(d.id)}</td>` +
-          `<td><span class="badge ${d.status}">${d.status.replace("_", " ")}</span></td>` +
-          `<td class="mono">${d.attempt_count}×</td>` +
-          `<td class="mono">${fmtTime(d.created_at)}</td>` +
-          `<td class="mono">${d.status === "dead_lettered" ? "—" : fmtTime(d.next_attempt_at)}</td>` +
-          `<td>${actions}</td></tr>`;
-      }
-      async function renderDeliveries(page) {
-        let rows = "";
-        for (const d of page.items) {
-          rows += deliveryRow(d);
-          if (expanded === d.id) {
-            let attempts;
-            try { attempts = await api(`/deliveries/${d.id}/attempts`); } catch { attempts = []; }
-            const inner = attempts.length
-              ? `<table><tr><th>#</th><th>HTTP</th><th>latency</th><th>at</th><th>error</th></tr>${attempts.map(attemptRow).join("")}</table>`
-              : `<p class="msg">No attempts yet.</p>`;
-            rows += `<tr class="attempts"><td colspan="6">${inner}</td></tr>`;
-          }
-        }
-        $("table-wrap").innerHTML = page.items.length
-          ? `<table><thead><tr><th>Delivery</th><th>Status</th><th>Attempts</th><th>Created</th><th>Next retry</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
-          : `<p class="msg">No deliveries yet — click <strong>Emit event</strong> above.</p>`;
-        $("table-wrap").querySelectorAll("[data-view]").forEach((el) =>
-          el.addEventListener("click", (e) => { e.preventDefault(); toggleAttempts(el.dataset.view); }));
-        $("table-wrap").querySelectorAll("[data-redrive]").forEach((el) =>
-          el.addEventListener("click", (e) => { e.preventDefault(); redrive(el.dataset.redrive, el); }));
-      }
-      async function toggleAttempts(id) { expanded = expanded === id ? null : id; await refresh(); }
-      async function redrive(id, el) {
-        el.style.pointerEvents = "none";
-        try { await api(`/deliveries/${id}/redrive`, { method: "POST" }); await refresh(); }
-        catch (e) { el.style.pointerEvents = ""; alert("Redrive failed: " + e.message); }
+      function renderFeed(events) {
+        $("feed-wrap").innerHTML = events.length
+          ? events.map(feedRow).join("")
+          : `<p class="msg">Waiting for the producer's first ticks… is <code>python -m producer</code> running?</p>`;
       }
 
       // ---- rendering: request inbox --------------------------------------
@@ -469,7 +380,7 @@
           `<span class="time mono">${fmtTime(r.received_at)}</span></div>`;
         if (open) {
           body += `<div class="inbox-body"><div class="hdrs">` +
-            `<span class="hk">POST</span> …/simulate/receiver/…\n` +
+            `<span class="hk">POST</span> …/showcase/receiver/…\n` +
             `<span class="hk">X-Webhook-Timestamp:</span> ${esc(r.timestamp_header || "—")}\n` +
             `<span class="hk">X-Webhook-Signature:</span> ${esc(r.signature_header || "—")}\n` +
             `<span class="hk">X-Webhook-Attempt:</span> ${r.attempt}</div>` +
@@ -477,53 +388,53 @@
         }
         return body + `</div>`;
       }
-      function renderInbox(inbox) {
-        $("inbox-wrap").innerHTML = inbox.items.length
-          ? inbox.items.map(inboxItem).join("")
-          : `<p class="msg">Nothing received yet — emit an event to see the signed request land here.</p>`;
+      function renderInbox(items) {
+        $("inbox-wrap").innerHTML = items.length
+          ? items.map(inboxItem).join("")
+          : `<p class="msg">Nothing received yet — the producer's ticks land here with their real signature.</p>`;
         $("inbox-wrap").querySelectorAll("[data-inbox]").forEach((el) =>
           el.addEventListener("click", () => {
             const id = el.dataset.inbox;
             inboxOpen.has(id) ? inboxOpen.delete(id) : inboxOpen.add(id);
-            renderInbox(inbox);
+            renderInbox(items);
           }));
+      }
+
+      // ---- embedded Discord (WidgetBot) ----------------------------------
+      function ensureDiscord(feed) {
+        if (discordLoaded) return;
+        const server = feed.discord_widget_server_id;
+        const channel = feed.discord_widget_channel_id;
+        if (!server || !channel) return; // leave the placeholder message
+        const src = `https://e.widgetbot.io/channels/${encodeURIComponent(server)}/${encodeURIComponent(channel)}`;
+        $("discord-wrap").innerHTML = `<iframe src="${src}" allow="clipboard-write; fullscreen" title="Live Discord channel"></iframe>`;
+        discordLoaded = true;
       }
 
       // ---- polling -------------------------------------------------------
       async function refresh() {
-        if (!localStorage.getItem(KEY_LS)) return;
         try {
-          const [summary, page, inbox] = await Promise.all([
-            api("/metrics/summary"),
-            api("/deliveries?limit=50"),
-            api("/simulate/inbox"),
+          const [summary, feed] = await Promise.all([
+            api("/showcase/summary"),
+            api("/showcase/feed"),
           ]);
+          dlqDepth = summary.dlq_depth;
           renderCards(summary);
-          await renderDeliveries(page);
-          health = inbox.healthy; renderHealth();
-          renderInbox(inbox);
+          renderFeed(feed.events);
+          renderInbox(feed.inbox);
+          ensureDiscord(feed);
+          health = feed.healthy; renderHealth();
           $("live-dot").classList.add("live");
         } catch (e) {
           $("live-dot").classList.remove("live");
-          if (e.status === 401) {
-            $("table-wrap").innerHTML = `<p class="msg error">Stored API key is invalid. Open Advanced → Reset demo.</p>`;
-          }
+          $("feed-wrap").innerHTML = `<p class="msg error">Could not reach the showcase API (${e.status ? "HTTP " + e.status : e.message}).</p>`;
         }
-      }
-      function startPolling() {
-        if (timer) clearInterval(timer);
-        refresh();
-        timer = setInterval(refresh, 2000);
       }
       function start() {
         if (timer) { clearInterval(timer); timer = null; }
         renderHealth();
-        if (localStorage.getItem(KEY_LS)) startPolling();
-        else {
-          $("cards").innerHTML = "";
-          $("table-wrap").innerHTML = `<p class="msg">Click <strong>Emit event</strong> to publish your first webhook.</p>`;
-          $("inbox-wrap").innerHTML = `<p class="msg">Deliveries that reach your endpoint show up here — with their real signature.</p>`;
-        }
+        refresh();
+        timer = setInterval(refresh, 2000);
       }
 
       start();

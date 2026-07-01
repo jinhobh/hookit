@@ -22,6 +22,15 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+def hash_api_key(plaintext: str) -> str:
+    """Return the SHA-256 hex digest stored for an API key.
+
+    Single source of truth for how plaintext keys map to their persisted hash,
+    shared by key generation, authentication, and showcase seeding.
+    """
+    return hashlib.sha256(plaintext.encode()).hexdigest()
+
+
 def generate_api_key() -> tuple[str, str, str]:
     """Generate a high-entropy API key.
 
@@ -36,7 +45,7 @@ def generate_api_key() -> tuple[str, str, str]:
     raw = secrets.token_urlsafe(32)  # 256 bits of entropy
     plaintext = f"{_KEY_PREFIX}{raw}"
     key_prefix = plaintext[: len(_KEY_PREFIX) + _PREFIX_RANDOM_CHARS]
-    key_hash = hashlib.sha256(plaintext.encode()).hexdigest()
+    key_hash = hash_api_key(plaintext)
     return plaintext, key_prefix, key_hash
 
 

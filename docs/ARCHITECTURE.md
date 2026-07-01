@@ -156,20 +156,26 @@ paths.
 - **Single worker process (MVP).** Simple to reason about; the claim model already
   supports running multiple workers when needed.
 
-## 11. Interactive demo — Ops Console (`POST /simulate/*`)
+## 11. Live showcase — real producer → real Discord (`/showcase/*`)
 
-Powers the dashboard's interactive demo: emit real GitHub-style events, toggle a
-stand-in "deploy pipeline" up or down, and watch retries, dead-lettering, and
-redrive recovery on real data — plus an inbox of the actual signed requests the
-receiver accepted. Design constraints and how they're met:
+Powers the dashboard's live demo. It is genuinely end-to-end: a **separate
+`producer` service** (`python -m producer`, its own process group) polls **real
+crypto prices** from a keyless public API and POSTs them to the platform's real
+public `POST /events` API with a real key — an external client, not an in-process
+fabricator. Each event fans out to two endpoints on a shared, seeded "showcase"
+project: a real **Discord** endpoint (`payload_format=discord`) that receives
+`price.alert` events (meaningful moves land in a real Discord channel, embedded
+live in the dashboard), and a **controllable receiver** that receives every
+`price.tick`. Visitors drive the reliability story through public, key-less
+`/showcase/*` routes. Design constraints and how they're met:
 
-- **Reuse real code paths, not test doubles.** Events are published through the
-  same `ingest_event()` every real client uses (`POST /simulate/events`) and
-  delivered through the same `process_delivery()` the worker uses — real HMAC
-  signing, a real HTTP round trip to a real (self-referential) receiver, real
+- **Reuse real code paths, not test doubles.** The producer publishes through the
+  same `POST /events` / `ingest_event()` every real client uses; deliveries go
+  through the same `process_delivery()` the worker uses — real HMAC signing, real
+  HTTP round trips (to real Discord and to a self-referential receiver), real
   `DeliveryAttempt` rows.
 - **Failure is a real, DB-backed toggle — not baked into payloads.**
-  `POST /simulate/health` upserts `DemoReceiverHealth`, which the receiver reads
+  `POST /showcase/health` upserts `DemoReceiverHealth`, which the receiver reads
   on every request. Because the flag lives in the database (not process memory),
   the toggle write and the receiver read resolve independent sessions, and the
   out-of-process worker observes the current value — so an *in-flight* retry
@@ -178,25 +184,26 @@ receiver accepted. Design constraints and how they're met:
   not permanently broken.
 - **One delivery is fast-forwarded, not fabricated.** Real backoff (base=10s,
   cap=1h, 6 attempts) would take ~5 real minutes to reach dead-lettered.
-  `POST /simulate/dead-letter` (only allowed while the pipeline is down) instead
+  `POST /showcase/dead-letter` (only allowed while the pipeline is down) instead
   calls `process_delivery()` back-to-back with no wait on `next_attempt_at` —
   real signing and recording, only the *wait* is skipped, isolated in
   `_fast_forward_to_dead_letter`.
 - **Two-phase commit, deliberately.** The dead-letter path commits once after
-  publishing the event (so the out-of-process worker and the `/simulate/receiver`
+  publishing the event (so the out-of-process worker and the `/showcase/receiver`
   route — each resolving their own DB session — can see the row under Postgres'
   `READ COMMITTED` default) and again after the fast-forward. A documented
   exception to the usual "router commits once" convention.
 - **Concurrency-safe against the real worker.** The target delivery is loaded
   with a blocking `SELECT ... FOR UPDATE` (not `SKIP LOCKED`) bounded by a 5s
   `lock_timeout`, so the live worker racing to claim the same just-committed row
-  can't cause a lost update; `find_or_create_demo_endpoint` guards its
-  check-then-insert with `pg_advisory_xact_lock` since there's no unique
-  constraint to catch two concurrent first actions creating duplicate demo
-  endpoints.
-- **No new trust boundary.** The receiver route only ever answers
-  200/401/404/503 for its own reserved (`__demo__`-tagged) endpoints — it never
-  initiates a request — and every `/simulate/*` control route is scoped by the
-  caller's own project API key exactly like every other authenticated endpoint.
-  Accepted requests are recorded in `DemoReceivedRequest` (a bounded per-endpoint
-  tail) and surfaced via `GET /simulate/inbox`.
+  can't cause a lost update; `seed_showcase` guards its check-then-insert with
+  `pg_advisory_xact_lock` since there's no unique constraint to catch two
+  concurrent seedings creating duplicate showcase endpoints.
+- **Scoped, not a new trust boundary.** The receiver route only ever answers
+  200/401/404/503 for its own reserved (`__showcase__`-tagged) endpoint — it
+  never initiates a request. The `/showcase/*` routes are unauthenticated but
+  **hard-scoped to the single seeded showcase project**, so no real customer data
+  is exposed. Accepted requests are recorded in `DemoReceivedRequest` (a bounded
+  tail) and surfaced via `GET /showcase/feed`. `POST /showcase/burst` proxies to
+  the producer over private networking, keeping the producer's control server off
+  the public internet.

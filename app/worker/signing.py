@@ -42,7 +42,7 @@ def verify_signature(
     ``now`` is injectable for testing (defaults to ``time.time()``). Mirrors
     the reference implementation in ``tools/demo_receiver.py``, which real
     integrators can copy-paste standalone; this copy is for the in-app
-    ``/simulate/receiver`` endpoint.
+    ``/showcase/receiver`` endpoint.
     """
     if not signature_header:
         return False, "missing signature header"
