@@ -63,8 +63,13 @@ class ProducerSettings(BaseSettings):
         description="HTTP timeout for both upstream price fetches and event publishing.",
     )
     control_host: str = Field(
-        default="0.0.0.0",
-        description="Bind host for the tiny control server exposing POST /burst.",
+        default="::",
+        description=(
+            "Bind host for the tiny control server exposing POST /burst. Defaults "
+            "to '::' (all IPv6 + IPv4-mapped) so it is reachable over Fly's private "
+            "networking (6PN), which is IPv6-only — binding '0.0.0.0' would refuse "
+            "those connections."
+        ),
     )
     control_port: int = Field(
         default=8100,
