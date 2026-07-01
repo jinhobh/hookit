@@ -21,6 +21,7 @@ import random
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from decimal import Decimal
+from typing import Any
 
 import httpx
 import uvicorn
@@ -75,6 +76,10 @@ async def _fire_burst(
     moment a visitor clicks). All are grounded in the latest observed prices with
     a small random jitter; if nothing has been observed yet, seeds from one live
     fetch. Returns the total number of events published.
+
+    Publishes **concurrently** (``asyncio.gather``) so the whole spike completes
+    in about one round-trip rather than the sum of ~two dozen sequential POSTs —
+    which would otherwise exceed the caller's HTTP timeout.
     """
     latest = tracker.latest()
     if not latest:
@@ -87,23 +92,21 @@ async def _fire_burst(
         return 0
 
     items = list(latest.items())
-    published = 0
+    events: list[tuple[str, dict[str, Any]]] = []
     for i in range(count):
         symbol, base_price = items[i % len(items)]
-        price = _jittered(base_price)
-        event_type, payload = build_tick_event(symbol, price, base_price)
+        etype, payload = build_tick_event(symbol, _jittered(base_price), base_price)
         payload["burst"] = True
-        await platform.publish(event_type, payload)
-        published += 1
+        events.append((etype, payload))
 
     # A handful of alerts so the Discord channel shows life on demand.
     for symbol, base_price in items:
-        price = _jittered(base_price)
-        event_type, payload = build_alert_event(symbol, price, base_price, Decimal("0"))
+        etype, payload = build_alert_event(symbol, _jittered(base_price), base_price, Decimal("0"))
         payload["burst"] = True
-        await platform.publish(event_type, payload)
-        published += 1
-    return published
+        events.append((etype, payload))
+
+    statuses = await asyncio.gather(*(platform.publish(t, p) for t, p in events))
+    return sum(1 for s in statuses if 200 <= s < 300)
 
 
 def _jittered(base_price: Decimal) -> Decimal:
