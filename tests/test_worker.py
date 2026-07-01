@@ -19,7 +19,7 @@ import pytest
 from app.db.base import Base
 from app.models.delivery import Delivery, DeliveryStatus
 from app.models.delivery_attempt import DeliveryAttempt
-from app.models.endpoint import Endpoint, EndpointStatus
+from app.models.endpoint import Endpoint, EndpointStatus, PayloadFormat
 from app.models.event import Event
 from app.models.project import Project
 from app.services.crypto import encrypt_secret, generate_endpoint_secret
@@ -620,3 +620,53 @@ def test_run_once_no_sleep_for_deliveries_to_different_endpoints(wk_db_session: 
 
     assert count == 3
     mock_sleep.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: per-endpoint payload transformation (Discord)
+# ---------------------------------------------------------------------------
+
+
+def test_discord_endpoint_posts_discord_shaped_body(wk_db_session: Session) -> None:
+    """A discord-format endpoint receives a Discord webhook message, not the raw envelope."""
+    project = _make_project(wk_db_session, "wk-discord")
+    ep = Endpoint(
+        project_id=project.id,
+        url="http://receiver.test/hook",
+        event_types=["order.created"],
+        secret_enc=encrypt_secret("discord-secret"),
+        status=EndpointStatus.active,
+        payload_format=PayloadFormat.discord,
+    )
+    wk_db_session.add(ep)
+    wk_db_session.flush()
+    event = _make_event(wk_db_session, project.id)
+    delivery = _make_delivery(wk_db_session, event, ep)
+
+    transport = _MockTransport(status_code=200)
+    with httpx.Client(transport=transport) as client:
+        process_delivery(delivery, wk_db_session, client)
+
+    assert delivery.status == DeliveryStatus.succeeded
+    sent = json.loads(transport.requests[0].content)
+    assert sent["username"] == "HookIt"
+    assert "order.created" in sent["embeds"][0]["title"]
+    # The signature header is still computed over the transformed body.
+    assert "X-Webhook-Signature" in transport.requests[0].headers
+
+
+def test_raw_endpoint_still_posts_native_envelope(wk_db_session: Session) -> None:
+    """Default (raw) endpoints are unchanged: native {event_id,type,payload} body."""
+    project = _make_project(wk_db_session, "wk-raw")
+    ep = _make_endpoint(wk_db_session, project.id, "raw-secret")
+    assert ep.payload_format == PayloadFormat.raw  # ORM default applied
+    event = _make_event(wk_db_session, project.id)
+    delivery = _make_delivery(wk_db_session, event, ep)
+
+    transport = _MockTransport(status_code=200)
+    with httpx.Client(transport=transport) as client:
+        process_delivery(delivery, wk_db_session, client)
+
+    sent = json.loads(transport.requests[0].content)
+    assert set(sent) == {"event_id", "type", "payload"}
+    assert sent["type"] == "order.created"

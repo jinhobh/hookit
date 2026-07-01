@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from datetime import UTC, datetime, timedelta
@@ -23,6 +22,7 @@ from app.services.metrics import (
     DELIVERY_DURATION_SECONDS,
 )
 from app.services.ssrf import SSRFError, validate_url_not_ssrf
+from app.services.transform import build_delivery_body
 from app.worker.backoff import compute_next_attempt_at
 from app.worker.signing import build_signature_header
 
@@ -101,14 +101,7 @@ def process_delivery(
 
     secret = decrypt_secret(endpoint.secret_enc)
 
-    body = json.dumps(
-        {
-            "event_id": str(event.id),
-            "type": event.type,
-            "payload": event.payload,
-        },
-        separators=(",", ":"),
-    ).encode()
+    body = build_delivery_body(endpoint.payload_format, event.id, event.type, event.payload)
 
     ts = int(time.time())
     headers = {

@@ -68,6 +68,7 @@ def create_endpoint(
         event_types=body.event_types,
         secret_enc=encrypt_secret(plaintext_secret),
         status=body.status,
+        payload_format=body.payload_format,
         rate_limit_rps=body.rate_limit_rps,
     )
     session.add(endpoint)
@@ -79,6 +80,7 @@ def create_endpoint(
         url=endpoint.url,
         event_types=endpoint.event_types,
         status=endpoint.status,
+        payload_format=endpoint.payload_format,
         created_at=endpoint.created_at,
         updated_at=endpoint.updated_at,
         rate_limit_rps=endpoint.rate_limit_rps,
@@ -146,6 +148,8 @@ def update_endpoint(
         endpoint.event_types = body.event_types
     if body.status is not None:
         endpoint.status = body.status
+    if body.payload_format is not None:
+        endpoint.payload_format = body.payload_format
     if body.rate_limit_rps is not None:
         endpoint.rate_limit_rps = body.rate_limit_rps
     session.commit()

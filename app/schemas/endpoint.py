@@ -7,7 +7,7 @@ from datetime import datetime
 
 from pydantic import AnyHttpUrl, BaseModel, Field, field_validator
 
-from app.models.endpoint import EndpointStatus
+from app.models.endpoint import EndpointStatus, PayloadFormat
 
 
 class EndpointCreate(BaseModel):
@@ -16,6 +16,7 @@ class EndpointCreate(BaseModel):
     url: AnyHttpUrl
     event_types: list[str] = Field(min_length=1)
     status: EndpointStatus = EndpointStatus.active
+    payload_format: PayloadFormat = PayloadFormat.raw
     rate_limit_rps: float | None = Field(default=None, gt=0, le=1000.0)
 
     @field_validator("event_types")
@@ -33,6 +34,7 @@ class EndpointUpdate(BaseModel):
     url: AnyHttpUrl | None = None
     event_types: list[str] | None = Field(default=None, min_length=1)
     status: EndpointStatus | None = None
+    payload_format: PayloadFormat | None = None
     rate_limit_rps: float | None = Field(default=None, gt=0, le=1000.0)
 
     @field_validator("event_types")
@@ -54,6 +56,7 @@ class EndpointResponse(BaseModel):
     url: str
     event_types: list[str]
     status: EndpointStatus
+    payload_format: PayloadFormat = PayloadFormat.raw
     created_at: datetime
     updated_at: datetime
     rate_limit_rps: float | None = None
