@@ -1,4 +1,4 @@
-# Reliable Webhook Delivery Platform
+# HookIt is a: Reliable Webhook Delivery Platform
 
 **At-least-once delivery, exponential backoff with jitter, idempotency, dead-letter
 queuing, manual redrive, HMAC-SHA256 signing, and Postgres-as-queue — no external
@@ -51,8 +51,10 @@ serverless Postgres on [Neon](https://neon.tech):
 
 - **Interactive API docs:** https://hookit.fly.dev/docs — the Swagger UI lists and
   lets you try every endpoint.
-- **Observability dashboard:** https://hookit.fly.dev/dashboard/ — a read-only
-  console showing delivery health for a project (paste in a project API key).
+- **Observability dashboard:** https://hookit.fly.dev/dashboard/ — a console
+  showing delivery health for a project (paste in a project API key, or click
+  *New demo project* to get one instantly), with a one-click live simulation
+  of the whole reliability pipeline.
 - **Health check:** https://hookit.fly.dev/health → `{"status":"ok"}`
 
 It's an **API, not a website**, so the root path (`/`) intentionally returns
@@ -455,20 +457,6 @@ per-endpoint `rate_limit_rps` to throttle a slow receiver, per-endpoint
 `POST /endpoints/{id}/rotate-secret` for signing-secret rotation without
 downtime, and the `POST /simulate/*` routes (project-scoped) that power the
 dashboard's interactive Ops Console demo. Full endpoint list: `/docs`.
-
----
-
-## Human owner responsibilities
-
-The human owner ([@jinhobh](https://github.com/jinhobh)) only needs to:
-
-1. Keep `CLAUDE_CODE_OAUTH_TOKEN` (Claude Pro/Max) or `ANTHROPIC_API_KEY`
-   configured in the repo secrets.
-2. Keep `AGENT_GH_TOKEN` (PAT) valid so agent actions re-trigger the next
-   workflow.
-3. Intervene when an agent is stuck or to steer the roadmap.
-
-To restore a human merge gate, delete `.github/workflows/auto-merge.yml`.
 
 ---
 

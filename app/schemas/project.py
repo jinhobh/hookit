@@ -59,3 +59,10 @@ class ApiKeyListItem(BaseModel):
     revoked_at: datetime | None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class ApiKeyPageResponse(BaseModel):
+    """Paginated response for GET /projects/{project_id}/api-keys."""
+
+    items: list[ApiKeyListItem]
+    next_cursor: str | None = None
