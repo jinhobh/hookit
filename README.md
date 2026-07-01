@@ -1,4 +1,4 @@
-# Reliable Webhook Delivery Platform
+# HookIt is a: Reliable Webhook Delivery Platform
 
 **At-least-once delivery, exponential backoff with jitter, idempotency, dead-letter
 queuing, manual redrive, HMAC-SHA256 signing, and Postgres-as-queue — no external
