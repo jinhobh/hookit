@@ -51,8 +51,10 @@ serverless Postgres on [Neon](https://neon.tech):
 
 - **Interactive API docs:** https://hookit.fly.dev/docs — the Swagger UI lists and
   lets you try every endpoint.
-- **Observability dashboard:** https://hookit.fly.dev/dashboard/ — a read-only
-  console showing delivery health for a project (paste in a project API key).
+- **Observability dashboard:** https://hookit.fly.dev/dashboard/ — a console
+  showing delivery health for a project (paste in a project API key, or click
+  *New demo project* to get one instantly), with a one-click live simulation
+  of the whole reliability pipeline.
 - **Health check:** https://hookit.fly.dev/health → `{"status":"ok"}`
 
 It's an **API, not a website**, so the root path (`/`) intentionally returns
@@ -78,7 +80,8 @@ how the deployment is wired.
    real pipeline. Watch the cards fill in live: most deliveries succeed
    within a second, a couple genuinely retry with real exponential backoff
    (~10s), and one is driven to dead-letter so you can click its **redrive**
-   link yourself and watch it recover.
+   link yourself and watch it recover (allow a few seconds — redrive doesn't
+   wake the worker instantly, it picks the delivery up on its next poll).
 
 That's the whole reliability story — retry, backoff, dead-letter, redrive —
 happening in front of you. (This is unrelated to the [`demo/`](demo) CLI

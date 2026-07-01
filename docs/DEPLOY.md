@@ -132,7 +132,12 @@ python tools/demo_receiver.py --secret "<the-endpoint-signing-secret>" --port 88
   — the `FOR UPDATE SKIP LOCKED` claim model makes multiple workers safe.
 - **Cost control**: set `min_machines_running = 0` in `fly.toml` to let the `app`
   auto-stop when idle (adds a cold-start delay on the next request). The `worker`
-  is a continuous poller, so it stays running.
+  is meant to be a continuous poller, but — unlike `app` — it isn't fronted by
+  `http_service`, so Fly's automatic restart-on-request only covers `app`; if a
+  `worker` machine ever gets stopped (manually, or by a host event), nothing
+  brings it back automatically. Check `fly status --app YOUR-APP` if deliveries
+  stop progressing past `pending`, and `fly machine start <id>` if a worker
+  shows `stopped`.
 - **Migrations only** (without a full redeploy), run them from your laptop:
   ```bash
   fly proxy 5432 -a YOUR-APP-db          # in one terminal
