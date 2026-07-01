@@ -452,20 +452,6 @@ dashboard's one-click live demo. Full endpoint list: `/docs`.
 
 ---
 
-## Human owner responsibilities
-
-The human owner ([@jinhobh](https://github.com/jinhobh)) only needs to:
-
-1. Keep `CLAUDE_CODE_OAUTH_TOKEN` (Claude Pro/Max) or `ANTHROPIC_API_KEY`
-   configured in the repo secrets.
-2. Keep `AGENT_GH_TOKEN` (PAT) valid so agent actions re-trigger the next
-   workflow.
-3. Intervene when an agent is stuck or to steer the roadmap.
-
-To restore a human merge gate, delete `.github/workflows/auto-merge.yml`.
-
----
-
 ## License
 
 MIT.
