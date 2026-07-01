@@ -29,7 +29,7 @@
       header {
         display: flex;
         align-items: center;
-        gap: 16px;
+        gap: 14px;
         padding: 14px 22px;
         border-bottom: 1px solid var(--border);
         background: linear-gradient(180deg, #12161f, #0b0e14);
@@ -40,7 +40,7 @@
       .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; }
       .dot.live { background: var(--green); box-shadow: 0 0 8px var(--green); }
       .spacer { flex: 1; }
-      input {
+      input, select {
         background: var(--panel-2);
         border: 1px solid var(--border);
         color: var(--text);
@@ -48,7 +48,6 @@
         padding: 7px 10px;
         font: inherit;
       }
-      input#key { width: 260px; }
       button {
         background: var(--accent);
         border: none;
@@ -58,36 +57,63 @@
         padding: 7px 14px;
         cursor: pointer;
       }
-      button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+      button.ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+      button.danger { background: var(--red); }
+      button.warn { background: var(--amber); }
       button:disabled { opacity: 0.5; cursor: default; }
-      main { padding: 22px; max-width: 1180px; margin: 0 auto; }
-      .cards {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-        gap: 12px;
-        margin-bottom: 22px;
-      }
-      .card {
+      main { padding: 22px; max-width: 1240px; margin: 0 auto; }
+
+      /* Advanced disclosure (bring-your-own key) */
+      details.adv { color: var(--muted); }
+      details.adv summary { cursor: pointer; font-size: 12px; list-style: none; }
+      details.adv summary::-webkit-details-marker { display: none; }
+      details.adv .adv-body { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+      details.adv input#key { width: 240px; }
+
+      /* Ops console control panel */
+      .console {
         background: var(--panel);
         border: 1px solid var(--border);
         border-radius: 12px;
-        padding: 14px 16px;
+        padding: 16px 18px;
+        margin-bottom: 20px;
       }
+      .console .intro { color: var(--muted); font-size: 13px; margin: 0 0 14px; max-width: 900px; }
+      .console .intro strong { color: var(--text); }
+      .console code { background: var(--panel-2); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; font-size: 12px; color: var(--blue); }
+      .controls { display: flex; gap: 26px; flex-wrap: wrap; align-items: center; }
+      .cgroup { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      .cg-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 2px; }
+      .pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; font-weight: 600; font-size: 13px; border: 1px solid var(--border); }
+      .pill.up { color: var(--green); background: rgba(52,211,153,0.12); }
+      .pill.down { color: var(--red); background: rgba(248,113,113,0.12); }
+      a.dlq-link { color: var(--red); font-size: 13px; text-decoration: none; border-bottom: 1px dashed var(--red); }
+      .hint { color: var(--muted); font-size: 12px; }
+
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 12px;
+        margin-bottom: 22px;
+      }
+      .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
       .card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
       .card .value { font-size: 26px; font-weight: 700; margin-top: 4px; }
       .card .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
       .value.green { color: var(--green); }
       .value.red { color: var(--red); }
       .value.amber { color: var(--amber); }
+
+      .grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 22px; align-items: start; }
+      @media (max-width: 940px) { .grid { grid-template-columns: 1fr; } }
+      .section-title { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 10px 2px; }
+
       table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 12px; overflow: hidden; }
       th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); }
       th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
       tr:last-child td { border-bottom: none; }
       td.mono, .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; }
-      .badge {
-        display: inline-block; padding: 2px 9px; border-radius: 999px;
-        font-size: 12px; font-weight: 600; text-transform: capitalize;
-      }
+      .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; text-transform: capitalize; }
       .badge.succeeded { background: rgba(52,211,153,0.15); color: var(--green); }
       .badge.dead_lettered { background: rgba(248,113,113,0.15); color: var(--red); }
       .badge.failed { background: rgba(251,191,36,0.15); color: var(--amber); }
@@ -100,28 +126,91 @@
       .status-code { font-weight: 600; }
       .status-code.ok { color: var(--green); }
       .status-code.err { color: var(--red); }
-      .msg { color: var(--muted); padding: 40px; text-align: center; }
+      .msg { color: var(--muted); padding: 34px; text-align: center; }
       .msg.error { color: var(--red); }
-      .section-title { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 10px 2px; }
       a.link { color: var(--accent); text-decoration: none; }
+
+      /* Request inbox */
+      .inbox { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+      .inbox-item { border-bottom: 1px solid var(--border); }
+      .inbox-item:last-child { border-bottom: none; }
+      .inbox-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; flex-wrap: wrap; }
+      .inbox-head:hover { background: var(--panel-2); }
+      .inbox-head .evt { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; color: var(--text); }
+      .inbox-head .attempt { color: var(--muted); font-size: 12px; }
+      .inbox-head .sig { font-size: 11.5px; font-weight: 600; }
+      .inbox-head .sig.ok { color: var(--green); }
+      .inbox-head .sig.err { color: var(--red); }
+      .inbox-head .time { color: var(--muted); margin-left: auto; }
+      .inbox-body { padding: 0 14px 14px; }
+      .inbox-body .hdrs { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 12px; white-space: pre-wrap; word-break: break-all; color: var(--slate); }
+      .inbox-body .hdrs .hk { color: var(--muted); }
+      .inbox-body pre { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 8px 0 0; font-size: 12px; overflow-x: auto; color: var(--text); }
     </style>
   </head>
   <body>
     <header>
       <div class="brand">HOOK<span>IT</span> · Delivery Console</div>
-      <span id="live" class="dot" title="polling status"></span>
+      <span id="live-dot" class="dot" title="polling status"></span>
       <div class="spacer"></div>
-      <button id="demo-project" class="ghost" title="Mint a fresh project + API key and connect — no Swagger detour needed">New demo project</button>
-      <input id="base" placeholder="API base (blank = same origin)" title="Optional API base URL" />
-      <input id="key" type="password" placeholder="Project API key (Bearer)" />
-      <button id="save">Connect</button>
-      <button id="simulate" title="Publish a demo batch through the real pipeline — watch retries, backoff, and dead-lettering happen live">Simulate load</button>
+      <details class="adv">
+        <summary>⚙ Advanced</summary>
+        <div class="adv-body">
+          <input id="base" placeholder="API base (blank = same origin)" title="Optional API base URL" />
+          <input id="key" type="password" placeholder="Bring your own project API key" />
+          <button id="save-key" class="ghost">Use key</button>
+          <button id="reset" class="ghost" title="Forget the auto-provisioned demo project and start fresh">Reset demo</button>
+        </div>
+      </details>
     </header>
+
     <main>
+      <section class="console">
+        <p class="intro">
+          <strong>Deploy-pipeline demo.</strong> Publish real GitHub events —
+          <code>push</code>, <code>pull_request</code>, <code>workflow_run</code> — and the
+          platform delivers each one to your pipeline over HMAC-signed HTTP. Take the pipeline
+          <em>down</em> to watch retries, exponential backoff, and the dead-letter queue; bring it
+          back <em>up</em> and redrive to recover. No signup, no API key — a demo project is
+          created for you on your first click.
+        </p>
+        <div class="controls">
+          <div class="cgroup">
+            <span class="cg-label">Traffic</span>
+            <select id="evt-type" title="Event type to publish">
+              <option value="">Random event</option>
+              <option value="push">push</option>
+              <option value="pull_request">pull_request</option>
+              <option value="workflow_run">workflow_run</option>
+            </select>
+            <button id="emit-btn" title="Publish one real event">Emit event</button>
+            <button id="burst-btn" class="ghost" title="Publish a burst of 15 events">Burst ×15</button>
+            <button id="live-btn" class="ghost" title="Publish an event every 1.5s">Live traffic ▶</button>
+          </div>
+          <div class="cgroup">
+            <span class="cg-label">Your pipeline</span>
+            <span id="health-pill" class="pill up">● Healthy</span>
+            <button id="health-btn" class="ghost">Bring pipeline down</button>
+            <a id="force-dlq" class="dlq-link" href="#" hidden>force one to dead-letter →</a>
+          </div>
+        </div>
+      </section>
+
       <div id="cards" class="cards"></div>
-      <p class="section-title">Recent deliveries</p>
-      <div id="table-wrap">
-        <p class="msg">Enter a project API key to connect.</p>
+
+      <div class="grid">
+        <div>
+          <p class="section-title">Recent deliveries</p>
+          <div id="table-wrap">
+            <p class="msg">Click <strong>Emit event</strong> to publish your first webhook.</p>
+          </div>
+        </div>
+        <div>
+          <p class="section-title">Your pipeline’s inbox · signed requests received</p>
+          <div id="inbox-wrap" class="inbox">
+            <p class="msg">Deliveries that reach your endpoint show up here — with their real signature.</p>
+          </div>
+        </div>
       </div>
     </main>
 
@@ -129,75 +218,30 @@
       const $ = (id) => document.getElementById(id);
       const KEY_LS = "hookit_key";
       const BASE_LS = "hookit_base";
+      const AUTO_LS = "hookit_auto"; // "1" when the key was auto-provisioned
+      const LIVE_MAX = 40; // cap auto-emitted events so the demo DB stays bounded
+
       let expanded = null; // delivery id whose attempts are shown
+      const inboxOpen = new Set(); // received-request ids expanded
+      let health = true; // last-known pipeline health
       let timer = null;
+      let liveTimer = null;
+      let liveCount = 0;
 
       $("key").value = localStorage.getItem(KEY_LS) || "";
       $("base").value = localStorage.getItem(BASE_LS) || "";
 
-      $("save").addEventListener("click", () => {
-        localStorage.setItem(KEY_LS, $("key").value.trim());
-        localStorage.setItem(BASE_LS, $("base").value.trim());
-        start();
-      });
-
-      $("demo-project").addEventListener("click", async () => {
-        const btn = $("demo-project");
-        btn.disabled = true;
-        localStorage.setItem(BASE_LS, $("base").value.trim());
-        try {
-          const project = await api("/projects", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: "dashboard-demo-" + Date.now() }),
-          });
-          const apiKey = await api(`/projects/${project.id}/api-keys`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: "dashboard" }),
-          });
-          $("key").value = apiKey.key;
-          localStorage.setItem(KEY_LS, apiKey.key);
-          start();
-        } catch (e) {
-          alert("Could not create a demo project: " + e.message);
-        } finally {
-          btn.disabled = false;
-        }
-      });
-
-      $("simulate").addEventListener("click", async () => {
-        if (!localStorage.getItem(KEY_LS)) {
-          alert("Connect first — click “New demo project” or paste an API key.");
-          return;
-        }
-        const btn = $("simulate");
-        const label = btn.textContent;
-        btn.disabled = true;
-        btn.textContent = "Simulating…";
-        try {
-          await api("/simulate/run", { method: "POST" });
-          await refresh();
-        } catch (e) {
-          alert("Simulate failed: " + e.message);
-        } finally {
-          btn.disabled = false;
-          btn.textContent = label;
-        }
-      });
-
-      function apiBase() {
-        return (localStorage.getItem(BASE_LS) || "").replace(/\/$/, "");
-      }
-      function authHeaders() {
-        return { Authorization: "Bearer " + (localStorage.getItem(KEY_LS) || "") };
-      }
+      // ---- helpers -------------------------------------------------------
+      function apiBase() { return (localStorage.getItem(BASE_LS) || "").replace(/\/$/, ""); }
+      function authHeaders() { return { Authorization: "Bearer " + (localStorage.getItem(KEY_LS) || "") }; }
       async function api(path, opts = {}) {
         const res = await fetch(apiBase() + path, { ...opts, headers: { ...authHeaders(), ...(opts.headers || {}) } });
         if (!res.ok) throw Object.assign(new Error("HTTP " + res.status), { status: res.status });
         return res.status === 204 ? null : res.json();
       }
-
+      function esc(s) {
+        return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+      }
       function fmtTime(iso) {
         if (!iso) return "—";
         const d = new Date(iso);
@@ -205,12 +249,138 @@
       }
       function shortId(id) { return id.slice(0, 8); }
 
+      // ---- zero-friction provisioning ------------------------------------
+      async function ensureKey() {
+        if (localStorage.getItem(KEY_LS)) return;
+        const project = await api("/projects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "dashboard-demo-" + Date.now() }),
+        });
+        const apiKey = await api(`/projects/${project.id}/api-keys`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "dashboard" }),
+        });
+        localStorage.setItem(KEY_LS, apiKey.key);
+        localStorage.setItem(AUTO_LS, "1");
+      }
+      async function ensureStarted() {
+        await ensureKey();
+        if (!timer) startPolling();
+      }
+      // Run an action after guaranteeing a project/key exists; surfaces errors.
+      async function withKey(btn, label, fn) {
+        const prev = btn ? btn.textContent : null;
+        if (btn) { btn.disabled = true; if (label) btn.textContent = label; }
+        try { await ensureStarted(); await fn(); await refresh(); }
+        catch (e) { alert((label || "Action") + " failed: " + (e.status ? "HTTP " + e.status : e.message)); }
+        finally { if (btn) { btn.disabled = false; if (prev !== null) btn.textContent = prev; } }
+      }
+
+      // ---- traffic controls ----------------------------------------------
+      function selectedType() { const v = $("evt-type").value; return v === "" ? null : v; }
+
+      $("emit-btn").addEventListener("click", () =>
+        withKey($("emit-btn"), "Emitting…", () =>
+          api("/simulate/events", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ event_type: selectedType(), count: 1 }),
+          })));
+
+      $("burst-btn").addEventListener("click", () =>
+        withKey($("burst-btn"), "Bursting…", () =>
+          api("/simulate/events", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ event_type: selectedType(), count: 15 }),
+          })));
+
+      $("live-btn").addEventListener("click", async () => {
+        if (liveTimer) return stopLive();
+        try { await ensureStarted(); } catch (e) { return alert("Could not start: " + e.message); }
+        liveCount = 0;
+        $("live-btn").textContent = "Live traffic ⏸";
+        $("live-btn").classList.remove("ghost");
+        const tick = async () => {
+          if (liveCount >= LIVE_MAX) return stopLive();
+          liveCount++;
+          try {
+            await api("/simulate/events", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ event_type: null, count: 1 }),
+            });
+          } catch (_) { /* transient; keep streaming */ }
+        };
+        tick();
+        liveTimer = setInterval(tick, 1500);
+      });
+      function stopLive() {
+        if (liveTimer) clearInterval(liveTimer);
+        liveTimer = null;
+        $("live-btn").textContent = "Live traffic ▶";
+        $("live-btn").classList.add("ghost");
+      }
+
+      // ---- pipeline health -----------------------------------------------
+      $("health-btn").addEventListener("click", () => {
+        const next = !health; // toggle
+        withKey($("health-btn"), next ? "Restoring…" : "Bringing down…", async () => {
+          const r = await api("/simulate/health", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ healthy: next }),
+          });
+          health = r.healthy;
+          renderHealth();
+        });
+      });
+
+      $("force-dlq").addEventListener("click", (e) => {
+        e.preventDefault();
+        withKey(null, null, async () => {
+          try { await api("/simulate/dead-letter", { method: "POST" }); }
+          catch (err) {
+            if (err.status === 409) { alert("Bring the pipeline down first."); return; }
+            throw err;
+          }
+        });
+      });
+
+      function renderHealth() {
+        const pill = $("health-pill");
+        const btn = $("health-btn");
+        if (health) {
+          pill.className = "pill up"; pill.textContent = "● Healthy";
+          btn.textContent = "Bring pipeline down"; btn.className = "danger";
+          $("force-dlq").hidden = true;
+        } else {
+          pill.className = "pill down"; pill.textContent = "● Down";
+          btn.textContent = "Restore pipeline"; btn.className = "";
+          $("force-dlq").hidden = false;
+        }
+      }
+
+      // ---- advanced (bring your own key) ---------------------------------
+      $("save-key").addEventListener("click", () => {
+        const k = $("key").value.trim();
+        localStorage.setItem(BASE_LS, $("base").value.trim());
+        if (k) { localStorage.setItem(KEY_LS, k); localStorage.removeItem(AUTO_LS); }
+        stopLive(); start();
+      });
+      $("reset").addEventListener("click", () => {
+        localStorage.removeItem(KEY_LS); localStorage.removeItem(AUTO_LS);
+        $("key").value = ""; stopLive(); health = true; renderHealth(); start();
+      });
+
+      // ---- rendering: metrics cards --------------------------------------
       function statCard(label, value, cls = "", sub = "") {
         return `<div class="card"><div class="label">${label}</div>` +
           `<div class="value ${cls}">${value}</div>` +
           (sub ? `<div class="sub">${sub}</div>` : "") + `</div>`;
       }
-
       function renderCards(s) {
         const rate = s.success_rate == null ? "—" : (s.success_rate * 100).toFixed(1) + "%";
         const rateCls = s.success_rate == null ? "" : s.success_rate >= 0.99 ? "green" : s.success_rate >= 0.9 ? "amber" : "red";
@@ -227,6 +397,7 @@
           statCard("Throughput", s.throughput_per_min.toFixed(0), "", "succeeded / min");
       }
 
+      // ---- rendering: deliveries table -----------------------------------
       function attemptRow(a) {
         const codeCls = a.response_status == null ? "err" : a.response_status < 400 ? "ok" : "err";
         const code = a.response_status == null ? (a.error ? "ERR" : "—") : a.response_status;
@@ -234,20 +405,8 @@
           `<td class="status-code ${codeCls}">${code}</td>` +
           `<td class="mono">${a.duration_ms == null ? "—" : a.duration_ms + " ms"}</td>` +
           `<td class="mono">${fmtTime(a.created_at)}</td>` +
-          `<td class="mono">${(a.error || "").slice(0, 80) || ""}</td></tr>`;
+          `<td class="mono">${esc((a.error || "").slice(0, 80))}</td></tr>`;
       }
-
-      async function toggleAttempts(id) {
-        expanded = expanded === id ? null : id;
-        await refresh();
-      }
-
-      async function redrive(id, btn) {
-        btn.disabled = true;
-        try { await api(`/deliveries/${id}/redrive`, { method: "POST" }); await refresh(); }
-        catch (e) { btn.disabled = false; alert("Redrive failed: " + e.message); }
-      }
-
       function deliveryRow(d) {
         const canRedrive = d.status === "dead_lettered";
         const actions =
@@ -261,53 +420,110 @@
           `<td class="mono">${d.status === "dead_lettered" ? "—" : fmtTime(d.next_attempt_at)}</td>` +
           `<td>${actions}</td></tr>`;
       }
-
-      async function refresh() {
-        try {
-          const [summary, page] = await Promise.all([
-            api("/metrics/summary"),
-            api("/deliveries?limit=50"),
-          ]);
-          renderCards(summary);
-
-          let rows = "";
-          for (const d of page.items) {
-            rows += deliveryRow(d);
-            if (expanded === d.id) {
-              let attempts;
-              try { attempts = await api(`/deliveries/${d.id}/attempts`); } catch { attempts = []; }
-              const inner = attempts.length
-                ? `<table><tr><th>#</th><th>HTTP</th><th>latency</th><th>at</th><th>error</th></tr>${attempts.map(attemptRow).join("")}</table>`
-                : `<p class="msg">No attempts yet.</p>`;
-              rows += `<tr class="attempts"><td colspan="6">${inner}</td></tr>`;
-            }
+      async function renderDeliveries(page) {
+        let rows = "";
+        for (const d of page.items) {
+          rows += deliveryRow(d);
+          if (expanded === d.id) {
+            let attempts;
+            try { attempts = await api(`/deliveries/${d.id}/attempts`); } catch { attempts = []; }
+            const inner = attempts.length
+              ? `<table><tr><th>#</th><th>HTTP</th><th>latency</th><th>at</th><th>error</th></tr>${attempts.map(attemptRow).join("")}</table>`
+              : `<p class="msg">No attempts yet.</p>`;
+            rows += `<tr class="attempts"><td colspan="6">${inner}</td></tr>`;
           }
-          $("table-wrap").innerHTML = page.items.length
-            ? `<table><thead><tr><th>Delivery</th><th>Status</th><th>Attempts</th><th>Created</th><th>Next retry</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
-            : `<p class="msg">No deliveries yet — publish an event to see it here.</p>`;
-
-          $("table-wrap").querySelectorAll("[data-view]").forEach((el) =>
-            el.addEventListener("click", (e) => { e.preventDefault(); toggleAttempts(el.dataset.view); }));
-          $("table-wrap").querySelectorAll("[data-redrive]").forEach((el) =>
-            el.addEventListener("click", (e) => { e.preventDefault(); redrive(el.dataset.redrive, el); }));
-
-          $("live").classList.add("live");
-        } catch (e) {
-          $("live").classList.remove("live");
-          const msg = e.status === 401 ? "Invalid or missing API key." : "Cannot reach API: " + e.message;
-          $("table-wrap").innerHTML = `<p class="msg error">${msg}</p>`;
-          $("cards").innerHTML = "";
         }
+        $("table-wrap").innerHTML = page.items.length
+          ? `<table><thead><tr><th>Delivery</th><th>Status</th><th>Attempts</th><th>Created</th><th>Next retry</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
+          : `<p class="msg">No deliveries yet — click <strong>Emit event</strong> above.</p>`;
+        $("table-wrap").querySelectorAll("[data-view]").forEach((el) =>
+          el.addEventListener("click", (e) => { e.preventDefault(); toggleAttempts(el.dataset.view); }));
+        $("table-wrap").querySelectorAll("[data-redrive]").forEach((el) =>
+          el.addEventListener("click", (e) => { e.preventDefault(); redrive(el.dataset.redrive, el); }));
+      }
+      async function toggleAttempts(id) { expanded = expanded === id ? null : id; await refresh(); }
+      async function redrive(id, el) {
+        el.style.pointerEvents = "none";
+        try { await api(`/deliveries/${id}/redrive`, { method: "POST" }); await refresh(); }
+        catch (e) { el.style.pointerEvents = ""; alert("Redrive failed: " + e.message); }
       }
 
-      function start() {
-        if (timer) clearInterval(timer);
-        if (!localStorage.getItem(KEY_LS)) {
-          $("table-wrap").innerHTML = `<p class="msg">Enter a project API key to connect.</p>`;
-          return;
+      // ---- rendering: request inbox --------------------------------------
+      function prettyBody(body) {
+        try { return JSON.stringify(JSON.parse(body), null, 2); } catch { return body; }
+      }
+      function inboxItem(r) {
+        const cls = r.response_status < 400 ? "ok" : "err";
+        const label = r.response_status === 200 ? "200 accepted"
+          : r.response_status === 503 ? "503 pipeline down"
+          : r.response_status === 401 ? "401 bad signature"
+          : String(r.response_status);
+        const sig = r.verified
+          ? `<span class="sig ok">🔒 verified</span>`
+          : `<span class="sig err">✗ unsigned</span>`;
+        const open = inboxOpen.has(r.id);
+        let body = `<div class="inbox-item"><div class="inbox-head" data-inbox="${r.id}">` +
+          `<span class="status-code ${cls}">${label}</span>` +
+          `<span class="evt">${esc(r.event_type)}</span>` +
+          `<span class="attempt">attempt ${r.attempt}</span>${sig}` +
+          `<span class="time mono">${fmtTime(r.received_at)}</span></div>`;
+        if (open) {
+          body += `<div class="inbox-body"><div class="hdrs">` +
+            `<span class="hk">POST</span> …/simulate/receiver/…\n` +
+            `<span class="hk">X-Webhook-Timestamp:</span> ${esc(r.timestamp_header || "—")}\n` +
+            `<span class="hk">X-Webhook-Signature:</span> ${esc(r.signature_header || "—")}\n` +
+            `<span class="hk">X-Webhook-Attempt:</span> ${r.attempt}</div>` +
+            `<pre>${esc(prettyBody(r.body))}</pre></div>`;
         }
+        return body + `</div>`;
+      }
+      function renderInbox(inbox) {
+        $("inbox-wrap").innerHTML = inbox.items.length
+          ? inbox.items.map(inboxItem).join("")
+          : `<p class="msg">Nothing received yet — emit an event to see the signed request land here.</p>`;
+        $("inbox-wrap").querySelectorAll("[data-inbox]").forEach((el) =>
+          el.addEventListener("click", () => {
+            const id = el.dataset.inbox;
+            inboxOpen.has(id) ? inboxOpen.delete(id) : inboxOpen.add(id);
+            renderInbox(inbox);
+          }));
+      }
+
+      // ---- polling -------------------------------------------------------
+      async function refresh() {
+        if (!localStorage.getItem(KEY_LS)) return;
+        try {
+          const [summary, page, inbox] = await Promise.all([
+            api("/metrics/summary"),
+            api("/deliveries?limit=50"),
+            api("/simulate/inbox"),
+          ]);
+          renderCards(summary);
+          await renderDeliveries(page);
+          health = inbox.healthy; renderHealth();
+          renderInbox(inbox);
+          $("live-dot").classList.add("live");
+        } catch (e) {
+          $("live-dot").classList.remove("live");
+          if (e.status === 401) {
+            $("table-wrap").innerHTML = `<p class="msg error">Stored API key is invalid. Open Advanced → Reset demo.</p>`;
+          }
+        }
+      }
+      function startPolling() {
+        if (timer) clearInterval(timer);
         refresh();
         timer = setInterval(refresh, 2000);
+      }
+      function start() {
+        if (timer) { clearInterval(timer); timer = null; }
+        renderHealth();
+        if (localStorage.getItem(KEY_LS)) startPolling();
+        else {
+          $("cards").innerHTML = "";
+          $("table-wrap").innerHTML = `<p class="msg">Click <strong>Emit event</strong> to publish your first webhook.</p>`;
+          $("inbox-wrap").innerHTML = `<p class="msg">Deliveries that reach your endpoint show up here — with their real signature.</p>`;
+        }
       }
 
       start();

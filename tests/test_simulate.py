@@ -1,22 +1,17 @@
-"""Tests for the live simulation ("Simulate load") feature.
+"""Tests for the interactive dashboard demo ("Ops Console").
 
 Three tiers, deliberately:
 
-- **Tier A** (service-level): shared-savepoint session + a fake httpx
-  transport. Fast; exercises ``find_or_create_demo_endpoint`` and
-  ``run_simulation``'s batching/fast-forward logic directly, with no receiver
-  route involved.
-- **Tier B** (router + receiver): a real ``TestClient`` injected as the
-  fast-forward's ``http_client``, so requests actually hit
-  ``POST /simulate/receiver/{id}`` in-process (real signature verification,
-  real 200/401/404/500 branching). Still runs on the shared savepoint
-  session, so it does **not** prove cross-connection commit visibility — see
-  Tier C for that.
-- **Tier C**: two independent Postgres connections (the same idiom as
-  ``test_listen_notify.py::test_notify_received_on_listen_conn``), proving the
-  phase-1 commit in ``run_simulation`` is actually visible outside the
-  request's own session/connection — the one property the original design
-  sketch got wrong and that no shared-session test could catch.
+- **Unit** — ``build_demo_event`` payload shapes; no database.
+- **Service** (savepoint-isolated session): ``find_or_create_demo_endpoint``,
+  health get/set, ``emit_demo_events`` fan-out, inbox record/prune/list. These
+  never invoke the receiver route, so no cross-connection commit is involved.
+- **Integration** (real, independent sessions with real commits + cleanup): the
+  receiver route, the emit/health/inbox/dead-letter endpoints, and the
+  dead-letter → redrive → recovery loop. These commit for real — the receiver
+  resolves its own session exactly like production — so they can't run on the
+  shared savepoint session; each creates a throwaway project and deletes it
+  (ON DELETE CASCADE) at teardown.
 
 All tests require a live Postgres instance; skipped automatically when
 unreachable.
@@ -24,75 +19,85 @@ unreachable.
 
 from __future__ import annotations
 
+import random
 import time
 import uuid
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 
 import httpx
 import pytest
-from app.core.config import get_settings
 from app.db.base import Base
-from app.db.session import get_session
 from app.main import app
 from app.models.api_key import ApiKey, generate_api_key
 from app.models.delivery import Delivery, DeliveryStatus
-from app.models.delivery_attempt import DeliveryAttempt
+from app.models.demo import DemoReceivedRequest
 from app.models.endpoint import Endpoint
 from app.models.project import Project
 from app.routers.simulate import get_simulate_http_client
 from app.services.crypto import decrypt_secret
+from app.services.demo_events import DEMO_EVENT_TYPES, build_demo_event
 from app.services.simulate import (
-    SIMULATE_EVENT_TYPE,
-    _fast_forward_to_dead_letter,
+    _INBOX_KEEP,
+    DEMO_MARKER,
+    emit_demo_events,
     find_or_create_demo_endpoint,
-    run_simulation,
+    get_health,
+    list_inbox,
+    record_received_request,
+    set_health,
 )
-from app.worker.delivery_worker import run_once
+from app.worker.delivery_worker import process_delivery
 from app.worker.signing import build_signature_header
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
-# ---------------------------------------------------------------------------
-# Shared helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_project(session: Session, name: str) -> Project:
-    project = Project(name=name)
-    session.add(project)
-    session.flush()
-    return project
-
-
-def _make_project_and_key(session: Session, name: str) -> tuple[Project, str]:
-    project = _make_project(session, name)
-    plaintext, prefix, key_hash = generate_api_key()
-    api_key = ApiKey(project_id=project.id, name="test-key", key_prefix=prefix, key_hash=key_hash)
-    session.add(api_key)
-    session.flush()
-    return project, plaintext
+_BASE = "http://localhost:8000"
 
 
 def _auth(key: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {key}"}
 
 
-class _AlwaysFailTransport(httpx.BaseTransport):
-    """Always returns 500 — enough to drive process_delivery to dead-letter."""
-
-    def __init__(self) -> None:
-        self.requests: list[httpx.Request] = []
-
-    def handle_request(self, request: httpx.Request) -> httpx.Response:
-        self.requests.append(request)
-        return httpx.Response(500, text='{"status":"simulated failure"}')
+# ===========================================================================
+# Unit: demo event generator
+# ===========================================================================
 
 
-# ---------------------------------------------------------------------------
-# Tier A: service-level (shared savepoint session, fake transport)
-# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("event_type", DEMO_EVENT_TYPES)
+def test_build_demo_event_shapes(event_type: str) -> None:
+    etype, payload = build_demo_event(event_type, rng=random.Random(1))
+    assert etype == event_type
+    assert isinstance(payload, dict)
+    assert payload["repository"]["full_name"].startswith("acme/")
+    if event_type == "push":
+        assert payload["ref"].startswith("refs/heads/")
+        assert len(payload["after"]) == 40
+    elif event_type == "pull_request":
+        assert payload["action"] in {"opened", "synchronize", "closed"}
+        assert "title" in payload["pull_request"]
+    else:
+        assert payload["workflow_run"]["conclusion"] in {"success", "failure"}
+
+
+def test_build_demo_event_random_type_is_valid() -> None:
+    etype, _ = build_demo_event(rng=random.Random(7))
+    assert etype in DEMO_EVENT_TYPES
+
+
+def test_build_demo_event_is_deterministic_with_seed() -> None:
+    assert build_demo_event(rng=random.Random(42)) == build_demo_event(rng=random.Random(42))
+
+
+def test_build_demo_event_rejects_unknown_type() -> None:
+    with pytest.raises(ValueError):
+        build_demo_event("deploy.finished")
+
+
+# ===========================================================================
+# Service tier: savepoint-isolated session
+# ===========================================================================
 
 
 @pytest.fixture()
@@ -108,19 +113,29 @@ def sim_db_session(db_engine: Engine) -> Generator[Session, None, None]:
     connection.close()
 
 
+def _make_project(session: Session, name: str) -> Project:
+    project = Project(name=name)
+    session.add(project)
+    session.flush()
+    return project
+
+
 def test_find_or_create_demo_endpoint_creates_one(sim_db_session: Session) -> None:
     project = _make_project(sim_db_session, "sim-create-once")
-    ep = find_or_create_demo_endpoint(sim_db_session, project, "http://localhost:8000")
+    ep = find_or_create_demo_endpoint(sim_db_session, project, _BASE)
 
-    assert ep.event_types == [SIMULATE_EVENT_TYPE]
-    assert ep.url == f"http://localhost:8000/simulate/receiver/{ep.id}"
+    assert ep.event_types[0] == DEMO_MARKER
+    assert set(DEMO_EVENT_TYPES) <= set(ep.event_types)
+    assert ep.url == f"{_BASE}/simulate/receiver/{ep.id}"
     assert ep.rate_limit_rps is None
+    # A health row is provisioned alongside, defaulting to healthy.
+    assert get_health(sim_db_session, ep.id) is True
 
 
 def test_find_or_create_demo_endpoint_is_idempotent(sim_db_session: Session) -> None:
     project = _make_project(sim_db_session, "sim-idempotent")
-    ep1 = find_or_create_demo_endpoint(sim_db_session, project, "http://localhost:8000")
-    ep2 = find_or_create_demo_endpoint(sim_db_session, project, "http://localhost:8000")
+    ep1 = find_or_create_demo_endpoint(sim_db_session, project, _BASE)
+    ep2 = find_or_create_demo_endpoint(sim_db_session, project, _BASE)
 
     assert ep1.id == ep2.id
     rows = (
@@ -131,257 +146,313 @@ def test_find_or_create_demo_endpoint_is_idempotent(sim_db_session: Session) -> 
     assert len(rows) == 1
 
 
-def test_run_simulation_batch_composition(sim_db_session: Session) -> None:
-    project = _make_project(sim_db_session, "sim-batch")
-    transport = _AlwaysFailTransport()
-    with httpx.Client(transport=transport) as client:
-        result = run_simulation(session=sim_db_session, project=project, http_client=client)
+def test_get_and_set_health(sim_db_session: Session) -> None:
+    project = _make_project(sim_db_session, "sim-health")
+    ep = find_or_create_demo_endpoint(sim_db_session, project, _BASE)
 
-    assert result.queued_events == 12
-    assert result.queued_deliveries == 12  # one demo endpoint subscribes to all of them
-    assert result.dead_lettered_delivery_id is not None
+    assert get_health(sim_db_session, ep.id) is True
+    set_health(sim_db_session, ep.id, False)
+    assert get_health(sim_db_session, ep.id) is False
+    set_health(sim_db_session, ep.id, True)
+    assert get_health(sim_db_session, ep.id) is True
+    # Unknown endpoint defaults to healthy.
+    assert get_health(sim_db_session, uuid.uuid4()) is True
 
 
-def test_run_simulation_fast_forward_reaches_dead_letter_quickly(sim_db_session: Session) -> None:
-    project = _make_project(sim_db_session, "sim-fast-forward")
-    transport = _AlwaysFailTransport()
-
-    start = time.monotonic()
-    with httpx.Client(transport=transport) as client:
-        result = run_simulation(session=sim_db_session, project=project, http_client=client)
-    elapsed = time.monotonic() - start
-
-    # Without the fast-forward, base=10s/cap=1h backoff would take ~5 real minutes.
-    assert elapsed < 5.0
-    assert result.dead_lettered_delivery_id is not None
-
-    delivery = sim_db_session.get(Delivery, result.dead_lettered_delivery_id)
-    assert delivery is not None
-    assert delivery.status == DeliveryStatus.dead_lettered
-
-    settings = get_settings()
-    attempts = (
-        sim_db_session.execute(
-            select(DeliveryAttempt)
-            .where(DeliveryAttempt.delivery_id == delivery.id)
-            .order_by(DeliveryAttempt.attempt_number)
-        )
-        .scalars()
-        .all()
+def test_emit_demo_events_fans_out(sim_db_session: Session) -> None:
+    project = _make_project(sim_db_session, "sim-emit")
+    result = emit_demo_events(
+        session=sim_db_session, project=project, public_base_url=_BASE, event_type="push", count=3
     )
-    assert [a.attempt_number for a in attempts] == list(
-        range(1, settings.max_delivery_attempts + 1)
-    )
-    assert all(a.response_status == 500 for a in attempts)
+
+    assert result.queued_events == 3
+    assert result.queued_deliveries == 3  # one demo endpoint subscribes
+    assert result.event_type == "push"
+    assert result.sample_payload["ref"].startswith("refs/heads/")
+
+    delivered = sim_db_session.execute(
+        select(func.count()).select_from(Delivery).where(Delivery.endpoint_id == result.endpoint_id)
+    ).scalar_one()
+    assert delivered == 3
 
 
-def test_fast_forward_returns_none_when_delivery_missing(sim_db_session: Session) -> None:
-    settings = get_settings()
-    transport = _AlwaysFailTransport()
-    with httpx.Client(transport=transport) as client:
-        result = _fast_forward_to_dead_letter(
-            sim_db_session, client, uuid.uuid4(), uuid.uuid4(), settings
+def test_record_received_request_prunes_to_keep(sim_db_session: Session) -> None:
+    project = _make_project(sim_db_session, "sim-inbox-prune")
+    ep = find_or_create_demo_endpoint(sim_db_session, project, _BASE)
+
+    for i in range(_INBOX_KEEP + 5):
+        record_received_request(
+            sim_db_session,
+            endpoint_id=ep.id,
+            event_type="push",
+            attempt=1,
+            verified=True,
+            response_status=200,
+            signature_header=f"t=1,v1=sig{i}",
+            timestamp_header="1",
+            body='{"type":"push"}',
         )
-    assert result is None
+
+    total = sim_db_session.execute(
+        select(func.count())
+        .select_from(DemoReceivedRequest)
+        .where(DemoReceivedRequest.endpoint_id == ep.id)
+    ).scalar_one()
+    assert total == _INBOX_KEEP
+    assert len(list_inbox(sim_db_session, ep.id)) == _INBOX_KEEP
 
 
-# ---------------------------------------------------------------------------
-# Tier B: router + receiver (real TestClient injected as the http_client)
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# Integration tier: real sessions, real commits, explicit cleanup
+# ===========================================================================
 
 
 @pytest.fixture()
-def sim_client(sim_db_session: Session) -> Generator[TestClient, None, None]:
-    """Outer TestClient wired to the shared session, with a second TestClient
-    instance injected as get_simulate_http_client so the fast-forward's
-    self-call to /simulate/receiver actually runs the real route in-process.
-    """
+def make_project(db_engine: Engine) -> Generator[Callable[[], tuple[uuid.UUID, str]], None, None]:
+    """Factory that creates a real, committed project + API key.
 
-    def override_session() -> Generator[Session, None, None]:
-        yield sim_db_session
-
-    app.dependency_overrides[get_session] = override_session
-    with TestClient(app, raise_server_exceptions=True) as inner_client:
-
-        def override_http_client() -> Generator[httpx.Client, None, None]:
-            yield inner_client
-
-        app.dependency_overrides[get_simulate_http_client] = override_http_client
-        with TestClient(app, raise_server_exceptions=True) as outer_client:
-            yield outer_client
-        app.dependency_overrides.pop(get_simulate_http_client, None)
-    app.dependency_overrides.pop(get_session, None)
-
-
-def test_simulate_run_requires_auth(sim_client: TestClient) -> None:
-    resp = sim_client.post("/simulate/run")
-    assert resp.status_code == 401
-
-
-def test_simulate_run_end_to_end(sim_client: TestClient, sim_db_session: Session) -> None:
-    _, api_key = _make_project_and_key(sim_db_session, "sim-e2e")
-
-    resp = sim_client.post("/simulate/run", headers=_auth(api_key))
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["queued_events"] == 12
-    assert data["queued_deliveries"] == 12
-    assert data["dead_lettered_delivery_id"] is not None
-
-    dlq_resp = sim_client.get("/deliveries?status=dead_lettered", headers=_auth(api_key))
-    assert dlq_resp.status_code == 200
-    dlq_items = dlq_resp.json()["items"]
-    assert len(dlq_items) == 1
-    assert dlq_items[0]["id"] == data["dead_lettered_delivery_id"]
-
-    redrive_resp = sim_client.post(
-        f"/deliveries/{data['dead_lettered_delivery_id']}/redrive", headers=_auth(api_key)
-    )
-    assert redrive_resp.status_code == 200
-    assert redrive_resp.json()["status"] == "pending"
-
-
-def test_simulate_redrive_recovers_to_succeeded(
-    sim_client: TestClient, sim_db_session: Session
-) -> None:
-    """Regression test: redrive must not reset attempt_count, so the demo batch's
-    "redrive me" delivery is deliberately seeded to succeed on exactly the next
-    attempt after redrive (see run_simulation's redrive_fail_until) — otherwise
-    it would just fail once more and immediately dead-letter again, silently
-    breaking the one interaction the whole feature is built around.
-    """
-    _, api_key = _make_project_and_key(sim_db_session, "sim-redrive-recovers")
-
-    data = sim_client.post("/simulate/run", headers=_auth(api_key)).json()
-    dead_id = data["dead_lettered_delivery_id"]
-    assert dead_id is not None
-
-    redrive_resp = sim_client.post(f"/deliveries/{dead_id}/redrive", headers=_auth(api_key))
-    assert redrive_resp.json()["status"] == "pending"
-
-    # The redriven row sorts after the batch's other (earlier next_attempt_at)
-    # deliveries, so it may not land in the first claimed batch — loop until
-    # nothing's left to claim (bounded: 12 total events, batch_size defaults to 10).
-    with TestClient(app, raise_server_exceptions=True) as worker_http_client:
-        for _ in range(3):
-            if run_once(sim_db_session, worker_http_client) == 0:
-                break
-
-    final = sim_client.get(f"/deliveries/{dead_id}", headers=_auth(api_key)).json()
-    assert final["status"] == "succeeded"
-
-
-def test_simulate_run_reuses_demo_endpoint(sim_client: TestClient, sim_db_session: Session) -> None:
-    project, api_key = _make_project_and_key(sim_db_session, "sim-reuse")
-
-    first = sim_client.post("/simulate/run", headers=_auth(api_key)).json()
-    second = sim_client.post("/simulate/run", headers=_auth(api_key)).json()
-
-    assert first["endpoint_id"] == second["endpoint_id"]
-    endpoints = (
-        sim_db_session.execute(select(Endpoint).where(Endpoint.project_id == project.id))
-        .scalars()
-        .all()
-    )
-    assert len(endpoints) == 1
-
-
-def test_simulate_receiver_404_for_unknown_endpoint(sim_client: TestClient) -> None:
-    resp = sim_client.post(f"/simulate/receiver/{uuid.uuid4()}", content=b"{}")
-    assert resp.status_code == 404
-
-
-def test_simulate_receiver_401_on_bad_signature(
-    sim_client: TestClient, sim_db_session: Session
-) -> None:
-    project = _make_project(sim_db_session, "sim-receiver-badsig")
-    ep = find_or_create_demo_endpoint(sim_db_session, project, "http://localhost:8000")
-    sim_db_session.commit()
-
-    resp = sim_client.post(
-        f"/simulate/receiver/{ep.id}",
-        content=b'{"payload":{"fail_until_attempt":1}}',
-        headers={"X-Webhook-Signature": "t=1,v1=deadbeef", "X-Webhook-Attempt": "1"},
-    )
-    assert resp.status_code == 401
-
-
-def test_simulate_receiver_200_when_attempt_meets_threshold(
-    sim_client: TestClient, sim_db_session: Session
-) -> None:
-    project = _make_project(sim_db_session, "sim-receiver-pass")
-    ep = find_or_create_demo_endpoint(sim_db_session, project, "http://localhost:8000")
-    sim_db_session.commit()
-    secret = decrypt_secret(ep.secret_enc)
-
-    body = b'{"payload":{"fail_until_attempt":2}}'
-    ts = int(time.time())
-    resp = sim_client.post(
-        f"/simulate/receiver/{ep.id}",
-        content=body,
-        headers={
-            "X-Webhook-Signature": build_signature_header(secret, ts, body),
-            "X-Webhook-Timestamp": str(ts),
-            "X-Webhook-Attempt": "2",
-        },
-    )
-    assert resp.status_code == 200
-
-
-def test_simulate_receiver_500_when_attempt_below_threshold(
-    sim_client: TestClient, sim_db_session: Session
-) -> None:
-    project = _make_project(sim_db_session, "sim-receiver-fail")
-    ep = find_or_create_demo_endpoint(sim_db_session, project, "http://localhost:8000")
-    sim_db_session.commit()
-    secret = decrypt_secret(ep.secret_enc)
-
-    body = b'{"payload":{"fail_until_attempt":2}}'
-    ts = int(time.time())
-    resp = sim_client.post(
-        f"/simulate/receiver/{ep.id}",
-        content=body,
-        headers={
-            "X-Webhook-Signature": build_signature_header(secret, ts, body),
-            "X-Webhook-Timestamp": str(ts),
-            "X-Webhook-Attempt": "1",
-        },
-    )
-    assert resp.status_code == 500
-
-
-# ---------------------------------------------------------------------------
-# Tier C: cross-connection commit visibility (proves the phase-1 boundary)
-# ---------------------------------------------------------------------------
-
-
-def test_demo_endpoint_commit_is_visible_to_a_second_connection(db_engine: Engine) -> None:
-    """The endpoint created by find_or_create_demo_endpoint must be visible
-    from a genuinely independent connection once the caller commits — this is
-    what makes it safe for the real, out-of-process worker (and the
-    /simulate/receiver route, resolved via its own session) to see it.
+    Every project it hands out is deleted at teardown; ON DELETE CASCADE takes
+    the endpoints, deliveries, attempts, events, and demo rows with it.
     """
     Base.metadata.create_all(db_engine)
-    connection = db_engine.connect()
-    session = Session(connection)
-    try:
-        project = _make_project(session, "sim-cross-conn")
-        session.commit()
-        endpoint = find_or_create_demo_endpoint(session, project, "http://localhost:8000")
+    created: list[uuid.UUID] = []
+
+    def _factory() -> tuple[uuid.UUID, str]:
+        with Session(db_engine) as session:
+            project = Project(name=f"sim-int-{uuid.uuid4().hex[:12]}")
+            session.add(project)
+            session.flush()
+            plaintext, prefix, key_hash = generate_api_key()
+            session.add(
+                ApiKey(project_id=project.id, name="k", key_prefix=prefix, key_hash=key_hash)
+            )
+            session.commit()
+            created.append(project.id)
+            return project.id, plaintext
+
+    yield _factory
+
+    with Session(db_engine) as session:
+        for pid in created:
+            session.execute(delete(Project).where(Project.id == pid))
         session.commit()
 
-        second_connection = db_engine.connect()
+
+def _create_demo_endpoint(db_engine: Engine, project_id: uuid.UUID) -> tuple[uuid.UUID, str]:
+    """Provision the demo endpoint for a project and return (endpoint_id, secret)."""
+    with Session(db_engine) as session:
+        project = session.get(Project, project_id)
+        assert project is not None
+        ep = find_or_create_demo_endpoint(session, project, _BASE)
+        secret = decrypt_secret(ep.secret_enc)
+        session.commit()
+        return ep.id, secret
+
+
+def _set_health(db_engine: Engine, endpoint_id: uuid.UUID, healthy: bool) -> None:
+    with Session(db_engine) as session:
+        set_health(session, endpoint_id, healthy)
+        session.commit()
+
+
+def _process_pending(db_engine: Engine, endpoint_id: uuid.UUID, worker_client: TestClient) -> int:
+    """Process this endpoint's pending deliveries in-process (endpoint-scoped).
+
+    Deliberately narrower than the worker's global claim so the test never
+    touches unrelated rows that may exist in a shared database.
+    """
+    with Session(db_engine) as session:
+        deliveries = (
+            session.execute(
+                select(Delivery)
+                .options(selectinload(Delivery.endpoint), selectinload(Delivery.event))
+                .where(
+                    Delivery.endpoint_id == endpoint_id,
+                    Delivery.status == DeliveryStatus.pending,
+                )
+                .with_for_update()
+            )
+            .scalars()
+            .all()
+        )
+        for delivery in deliveries:
+            process_delivery(delivery, session, worker_client)
+        session.commit()
+        return len(deliveries)
+
+
+def _signed_headers(secret: str, body: bytes, attempt: int = 1) -> dict[str, str]:
+    ts = int(time.time())
+    return {
+        "X-Webhook-Signature": build_signature_header(secret, ts, body),
+        "X-Webhook-Timestamp": str(ts),
+        "X-Webhook-Attempt": str(attempt),
+    }
+
+
+def test_emit_requires_auth(make_project: Callable[[], tuple[uuid.UUID, str]]) -> None:
+    with TestClient(app) as client:
+        assert client.post("/simulate/events", json={"count": 1}).status_code == 401
+
+
+def test_emit_events_end_to_end(make_project: Callable[[], tuple[uuid.UUID, str]]) -> None:
+    _, api_key = make_project()
+    with TestClient(app) as client:
+        resp = client.post(
+            "/simulate/events",
+            json={"event_type": "push", "count": 2},
+            headers=_auth(api_key),
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["queued_events"] == 2
+        assert data["queued_deliveries"] == 2
+        assert data["event_type"] == "push"
+
+        deliveries = client.get("/deliveries", headers=_auth(api_key)).json()["items"]
+        assert len(deliveries) == 2
+        assert all(d["status"] == "pending" for d in deliveries)
+
+
+def test_health_toggle_reflected_in_inbox(
+    make_project: Callable[[], tuple[uuid.UUID, str]],
+) -> None:
+    _, api_key = make_project()
+    with TestClient(app) as client:
+        down = client.post("/simulate/health", json={"healthy": False}, headers=_auth(api_key))
+        assert down.status_code == 200
+        assert down.json()["healthy"] is False
+
+        inbox = client.get("/simulate/inbox", headers=_auth(api_key)).json()
+        assert inbox["healthy"] is False
+        assert inbox["items"] == []
+
+
+def test_receiver_404_for_unknown_endpoint(
+    make_project: Callable[[], tuple[uuid.UUID, str]],
+) -> None:
+    with TestClient(app) as client:
+        resp = client.post(f"/simulate/receiver/{uuid.uuid4()}", content=b"{}")
+        assert resp.status_code == 404
+
+
+def test_receiver_401_on_bad_signature_and_records_it(
+    make_project: Callable[[], tuple[uuid.UUID, str]], db_engine: Engine
+) -> None:
+    project_id, api_key = make_project()
+    endpoint_id, _secret = _create_demo_endpoint(db_engine, project_id)
+
+    with TestClient(app) as client:
+        resp = client.post(
+            f"/simulate/receiver/{endpoint_id}",
+            content=b'{"type":"push"}',
+            headers={"X-Webhook-Signature": "t=1,v1=deadbeef", "X-Webhook-Attempt": "1"},
+        )
+        assert resp.status_code == 401
+
+        inbox = client.get("/simulate/inbox", headers=_auth(api_key)).json()
+        assert len(inbox["items"]) == 1
+        assert inbox["items"][0]["verified"] is False
+        assert inbox["items"][0]["response_status"] == 401
+
+
+def test_receiver_200_when_healthy_503_when_down(
+    make_project: Callable[[], tuple[uuid.UUID, str]], db_engine: Engine
+) -> None:
+    project_id, _api_key = make_project()
+    endpoint_id, secret = _create_demo_endpoint(db_engine, project_id)
+    body = b'{"type":"workflow_run","payload":{}}'
+
+    with TestClient(app) as client:
+        ok = client.post(
+            f"/simulate/receiver/{endpoint_id}", content=body, headers=_signed_headers(secret, body)
+        )
+        assert ok.status_code == 200
+
+    _set_health(db_engine, endpoint_id, False)
+    with TestClient(app) as client:
+        down = client.post(
+            f"/simulate/receiver/{endpoint_id}", content=body, headers=_signed_headers(secret, body)
+        )
+        assert down.status_code == 503
+
+
+def test_inbox_shows_signed_request_after_delivery(
+    make_project: Callable[[], tuple[uuid.UUID, str]], db_engine: Engine
+) -> None:
+    _, api_key = make_project()
+    with TestClient(app) as client:
+        emit = client.post(
+            "/simulate/events", json={"event_type": "push", "count": 1}, headers=_auth(api_key)
+        ).json()
+        endpoint_id = uuid.UUID(emit["endpoint_id"])
+
+        processed = _process_pending(db_engine, endpoint_id, client)
+        assert processed == 1
+
+        inbox = client.get("/simulate/inbox", headers=_auth(api_key)).json()
+        assert len(inbox["items"]) == 1
+        item = inbox["items"][0]
+        assert item["verified"] is True
+        assert item["response_status"] == 200
+        assert item["event_type"] == "push"
+        assert item["signature_header"].startswith("t=")
+
+
+def test_dead_letter_requires_pipeline_down(
+    make_project: Callable[[], tuple[uuid.UUID, str]],
+) -> None:
+    _, api_key = make_project()
+    with TestClient(app) as client:
+        # Healthy by default → refuses to fabricate a dead-letter.
+        resp = client.post("/simulate/dead-letter", headers=_auth(api_key))
+        assert resp.status_code == 409
+
+
+def test_dead_letter_then_redrive_recovers(
+    make_project: Callable[[], tuple[uuid.UUID, str]], db_engine: Engine
+) -> None:
+    project_id, api_key = make_project()
+
+    # An in-process client injected as the fast-forward's http_client so the
+    # self-call to /simulate/receiver runs the real route in-process.
+    with TestClient(app, raise_server_exceptions=True) as inner_client:
+
+        def _override_http_client() -> Generator[httpx.Client, None, None]:
+            yield inner_client
+
+        app.dependency_overrides[get_simulate_http_client] = _override_http_client
         try:
-            row = second_connection.execute(
-                select(Endpoint).where(Endpoint.id == endpoint.id)
-            ).first()
-            assert row is not None
+            with TestClient(app) as client:
+                # Take the pipeline down, then fast-forward one delivery to the DLQ.
+                client.post("/simulate/health", json={"healthy": False}, headers=_auth(api_key))
+                dead = client.post("/simulate/dead-letter", headers=_auth(api_key)).json()
+                dead_id = dead["delivery_id"]
+                assert dead_id is not None
+                assert dead["healthy"] is False
+
+                dlq = client.get("/deliveries?status=dead_lettered", headers=_auth(api_key)).json()[
+                    "items"
+                ]
+                assert [d["id"] for d in dlq] == [dead_id]
+
+                # Bring the pipeline back up and redrive.
+                client.post("/simulate/health", json={"healthy": True}, headers=_auth(api_key))
+                redrive = client.post(f"/deliveries/{dead_id}/redrive", headers=_auth(api_key))
+                assert redrive.json()["status"] == "pending"
         finally:
-            second_connection.close()
-    finally:
-        stale_project = session.get(Project, project.id)
-        if stale_project is not None:
-            session.delete(stale_project)
-            session.commit()
-        session.close()
-        connection.close()
+            app.dependency_overrides.pop(get_simulate_http_client, None)
+
+    # Let the worker reprocess the redriven (now-pending) delivery against a
+    # healthy receiver — it must recover to succeeded.
+    with Session(db_engine) as session:
+        endpoint_id = session.execute(
+            select(Delivery.endpoint_id).where(Delivery.id == uuid.UUID(dead_id))
+        ).scalar_one()
+
+    with TestClient(app) as worker_client:
+        _process_pending(db_engine, endpoint_id, worker_client)
+
+    with TestClient(app) as client:
+        final = client.get(f"/deliveries/{dead_id}", headers=_auth(api_key)).json()
+        assert final["status"] == "succeeded"
