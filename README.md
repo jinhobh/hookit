@@ -12,7 +12,7 @@ broker required.**
 
 ---
 
-## What is this, in plain English?
+## What is this?
 
 Modern apps constantly need to tell *other* apps when something happens — "a
 customer paid," "an order shipped," "a user signed up." That notification is
