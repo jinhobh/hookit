@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HOOKIT · Delivery Console</title>
+    <style>
+      :root {
+        --bg: #0b0e14;
+        --panel: #12161f;
+        --panel-2: #171c28;
+        --border: #232a38;
+        --text: #e6e9ef;
+        --muted: #8a93a6;
+        --accent: #6c8cff;
+        --green: #34d399;
+        --amber: #fbbf24;
+        --red: #f87171;
+        --blue: #60a5fa;
+        --slate: #94a3b8;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 14px 22px;
+        border-bottom: 1px solid var(--border);
+        background: linear-gradient(180deg, #12161f, #0b0e14);
+        flex-wrap: wrap;
+      }
+      .brand { font-weight: 700; letter-spacing: 0.5px; font-size: 16px; }
+      .brand span { color: var(--accent); }
+      .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; }
+      .dot.live { background: var(--green); box-shadow: 0 0 8px var(--green); }
+      .spacer { flex: 1; }
+      input {
+        background: var(--panel-2);
+        border: 1px solid var(--border);
+        color: var(--text);
+        border-radius: 8px;
+        padding: 7px 10px;
+        font: inherit;
+      }
+      input#key { width: 260px; }
+      button {
+        background: var(--accent);
+        border: none;
+        color: #0b0e14;
+        font-weight: 600;
+        border-radius: 8px;
+        padding: 7px 14px;
+        cursor: pointer;
+      }
+      button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+      button:disabled { opacity: 0.5; cursor: default; }
+      main { padding: 22px; max-width: 1180px; margin: 0 auto; }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 12px;
+        margin-bottom: 22px;
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 14px 16px;
+      }
+      .card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+      .card .value { font-size: 26px; font-weight: 700; margin-top: 4px; }
+      .card .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+      .value.green { color: var(--green); }
+      .value.red { color: var(--red); }
+      .value.amber { color: var(--amber); }
+      table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 12px; overflow: hidden; }
+      th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+      th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
+      tr:last-child td { border-bottom: none; }
+      td.mono, .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; }
+      .badge {
+        display: inline-block; padding: 2px 9px; border-radius: 999px;
+        font-size: 12px; font-weight: 600; text-transform: capitalize;
+      }
+      .badge.succeeded { background: rgba(52,211,153,0.15); color: var(--green); }
+      .badge.dead_lettered { background: rgba(248,113,113,0.15); color: var(--red); }
+      .badge.failed { background: rgba(251,191,36,0.15); color: var(--amber); }
+      .badge.in_flight { background: rgba(96,165,250,0.15); color: var(--blue); }
+      .badge.pending { background: rgba(148,163,184,0.15); color: var(--slate); }
+      .attempts { background: var(--panel-2); }
+      .attempts td { padding: 0; }
+      .attempts table { background: transparent; border-radius: 0; }
+      .attempts th, .attempts td { border-bottom: 1px solid var(--border); }
+      .status-code { font-weight: 600; }
+      .status-code.ok { color: var(--green); }
+      .status-code.err { color: var(--red); }
+      .msg { color: var(--muted); padding: 40px; text-align: center; }
+      .msg.error { color: var(--red); }
+      .section-title { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 10px 2px; }
+      a.link { color: var(--accent); text-decoration: none; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand">HOOK<span>IT</span> · Delivery Console</div>
+      <span id="live" class="dot" title="polling status"></span>
+      <div class="spacer"></div>
+      <input id="base" placeholder="API base (blank = same origin)" title="Optional API base URL" />
+      <input id="key" type="password" placeholder="Project API key (Bearer)" />
+      <button id="save">Connect</button>
+    </header>
+    <main>
+      <div id="cards" class="cards"></div>
+      <p class="section-title">Recent deliveries</p>
+      <div id="table-wrap">
+        <p class="msg">Enter a project API key to connect.</p>
+      </div>
+    </main>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const KEY_LS = "hookit_key";
+      const BASE_LS = "hookit_base";
+      let expanded = null; // delivery id whose attempts are shown
+      let timer = null;
+
+      $("key").value = localStorage.getItem(KEY_LS) || "";
+      $("base").value = localStorage.getItem(BASE_LS) || "";
+
+      $("save").addEventListener("click", () => {
+        localStorage.setItem(KEY_LS, $("key").value.trim());
+        localStorage.setItem(BASE_LS, $("base").value.trim());
+        start();
+      });
+
+      function apiBase() {
+        return (localStorage.getItem(BASE_LS) || "").replace(/\/$/, "");
+      }
+      function authHeaders() {
+        return { Authorization: "Bearer " + (localStorage.getItem(KEY_LS) || "") };
+      }
+      async function api(path, opts = {}) {
+        const res = await fetch(apiBase() + path, { ...opts, headers: { ...authHeaders(), ...(opts.headers || {}) } });
+        if (!res.ok) throw Object.assign(new Error("HTTP " + res.status), { status: res.status });
+        return res.status === 204 ? null : res.json();
+      }
+
+      function fmtTime(iso) {
+        if (!iso) return "—";
+        const d = new Date(iso);
+        return d.toLocaleTimeString([], { hour12: false }) + "." + String(d.getMilliseconds()).padStart(3, "0");
+      }
+      function shortId(id) { return id.slice(0, 8); }
+
+      function statCard(label, value, cls = "", sub = "") {
+        return `<div class="card"><div class="label">${label}</div>` +
+          `<div class="value ${cls}">${value}</div>` +
+          (sub ? `<div class="sub">${sub}</div>` : "") + `</div>`;
+      }
+
+      function renderCards(s) {
+        const rate = s.success_rate == null ? "—" : (s.success_rate * 100).toFixed(1) + "%";
+        const rateCls = s.success_rate == null ? "" : s.success_rate >= 0.99 ? "green" : s.success_rate >= 0.9 ? "amber" : "red";
+        const p95 = s.latency_ms ? Math.round(s.latency_ms.p95) + " ms" : "—";
+        const p95sub = s.latency_ms ? `p50 ${Math.round(s.latency_ms.p50)} · p99 ${Math.round(s.latency_ms.p99)} ms` : "no timed attempts";
+        $("cards").innerHTML =
+          statCard("Total", s.totals.all) +
+          statCard("Succeeded", s.totals.succeeded, "green") +
+          statCard("In flight", s.totals.in_flight, "", `${s.totals.pending} pending`) +
+          statCard("Retrying", s.totals.failed, s.totals.failed ? "amber" : "") +
+          statCard("Dead-letter", s.dlq_depth, s.dlq_depth ? "red" : "") +
+          statCard("Success rate", rate, rateCls, `${s.attempts_total} attempts`) +
+          statCard("Latency p95", p95, "", p95sub) +
+          statCard("Throughput", s.throughput_per_min.toFixed(0), "", "succeeded / min");
+      }
+
+      function attemptRow(a) {
+        const codeCls = a.response_status == null ? "err" : a.response_status < 400 ? "ok" : "err";
+        const code = a.response_status == null ? (a.error ? "ERR" : "—") : a.response_status;
+        return `<tr><td class="mono">#${a.attempt_number}</td>` +
+          `<td class="status-code ${codeCls}">${code}</td>` +
+          `<td class="mono">${a.duration_ms == null ? "—" : a.duration_ms + " ms"}</td>` +
+          `<td class="mono">${fmtTime(a.created_at)}</td>` +
+          `<td class="mono">${(a.error || "").slice(0, 80) || ""}</td></tr>`;
+      }
+
+      async function toggleAttempts(id) {
+        expanded = expanded === id ? null : id;
+        await refresh();
+      }
+
+      async function redrive(id, btn) {
+        btn.disabled = true;
+        try { await api(`/deliveries/${id}/redrive`, { method: "POST" }); await refresh(); }
+        catch (e) { btn.disabled = false; alert("Redrive failed: " + e.message); }
+      }
+
+      function deliveryRow(d) {
+        const canRedrive = d.status === "dead_lettered";
+        const actions =
+          `<a class="link" href="#" data-view="${d.id}">${expanded === d.id ? "hide" : "attempts"}</a>` +
+          (canRedrive ? ` · <a class="link" href="#" data-redrive="${d.id}">redrive</a>` : "");
+        return `<tr>` +
+          `<td class="mono">${shortId(d.id)}</td>` +
+          `<td><span class="badge ${d.status}">${d.status.replace("_", " ")}</span></td>` +
+          `<td class="mono">${d.attempt_count}×</td>` +
+          `<td class="mono">${fmtTime(d.created_at)}</td>` +
+          `<td class="mono">${d.status === "dead_lettered" ? "—" : fmtTime(d.next_attempt_at)}</td>` +
+          `<td>${actions}</td></tr>`;
+      }
+
+      async function refresh() {
+        try {
+          const [summary, page] = await Promise.all([
+            api("/metrics/summary"),
+            api("/deliveries?limit=50"),
+          ]);
+          renderCards(summary);
+
+          let rows = "";
+          for (const d of page.items) {
+            rows += deliveryRow(d);
+            if (expanded === d.id) {
+              let attempts;
+              try { attempts = await api(`/deliveries/${d.id}/attempts`); } catch { attempts = []; }
+              const inner = attempts.length
+                ? `<table><tr><th>#</th><th>HTTP</th><th>latency</th><th>at</th><th>error</th></tr>${attempts.map(attemptRow).join("")}</table>`
+                : `<p class="msg">No attempts yet.</p>`;
+              rows += `<tr class="attempts"><td colspan="6">${inner}</td></tr>`;
+            }
+          }
+          $("table-wrap").innerHTML = page.items.length
+            ? `<table><thead><tr><th>Delivery</th><th>Status</th><th>Attempts</th><th>Created</th><th>Next retry</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
+            : `<p class="msg">No deliveries yet — publish an event to see it here.</p>`;
+
+          $("table-wrap").querySelectorAll("[data-view]").forEach((el) =>
+            el.addEventListener("click", (e) => { e.preventDefault(); toggleAttempts(el.dataset.view); }));
+          $("table-wrap").querySelectorAll("[data-redrive]").forEach((el) =>
+            el.addEventListener("click", (e) => { e.preventDefault(); redrive(el.dataset.redrive, el); }));
+
+          $("live").classList.add("live");
+        } catch (e) {
+          $("live").classList.remove("live");
+          const msg = e.status === 401 ? "Invalid or missing API key." : "Cannot reach API: " + e.message;
+          $("table-wrap").innerHTML = `<p class="msg error">${msg}</p>`;
+          $("cards").innerHTML = "";
+        }
+      }
+
+      function start() {
+        if (timer) clearInterval(timer);
+        if (!localStorage.getItem(KEY_LS)) {
+          $("table-wrap").innerHTML = `<p class="msg">Enter a project API key to connect.</p>`;
+          return;
+        }
+        refresh();
+        timer = setInterval(refresh, 2000);
+      }
+
+      start();
+    </script>
+  </body>
+</html>
