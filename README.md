@@ -7,7 +7,39 @@ broker required.**
 > **Status: MVP complete, plus hardening.** The API, delivery worker, retries,
 > dead-lettering, inspection endpoints, manual redrive, and end-to-end tests are
 > all live — along with SSRF protection, per-endpoint rate limiting, Prometheus
-> metrics, and a `LISTEN/NOTIFY`-driven worker. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+> metrics, a `LISTEN/NOTIFY`-driven worker, an observability dashboard, and a
+> Discord payload transform. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
+---
+
+## What is this, in plain English?
+
+Modern apps constantly need to tell *other* apps when something happens — "a
+customer paid," "an order shipped," "a user signed up." That notification is
+called a **webhook**: one app sends a small message to a web address the other
+app gave it.
+
+The hard part isn't sending the message — it's sending it **reliably**. The
+receiving computer might be restarted, offline, or just slow to respond for a
+few minutes. If you only try once, that notification is lost forever, silently.
+
+This project is a delivery system that sits in between and guarantees the
+message gets there:
+
+- If the receiver doesn't respond, it **automatically tries again**, waiting a
+  little longer each time (like a delivery van circling back instead of giving
+  up after one knock).
+- If it still fails after several attempts, it **doesn't throw the message
+  away** — it sets it aside (a "dead letter") so a human can look at it and
+  resend it later with one click.
+- Every attempt is signed and time-stamped, so the receiver can trust the
+  message really came from here and hasn't been tampered with or replayed.
+- A live **dashboard** shows all of this happening in real time — how many
+  messages succeeded, how many are stuck, and how long delivery is taking —
+  the way a package tracking page shows a shipment's journey.
+
+In short: it's the plumbing that makes sure "Message sent" also means
+"message received" — even when the internet has a bad day.
 
 ---
 
@@ -18,6 +50,8 @@ serverless Postgres on [Neon](https://neon.tech):
 
 - **Interactive API docs:** https://hookit.fly.dev/docs — the Swagger UI lists and
   lets you try every endpoint.
+- **Observability dashboard:** https://hookit.fly.dev/dashboard/ — a read-only
+  console showing delivery health for a project (paste in a project API key).
 - **Health check:** https://hookit.fly.dev/health → `{"status":"ok"}`
 
 It's an **API, not a website**, so the root path (`/`) intentionally returns
@@ -29,6 +63,49 @@ how the deployment is wired.
 
 > The instance scales to zero when idle to keep hosting costs near zero, so the
 > first request after a quiet period may take ~1–2s to wake.
+
+---
+
+## Try it yourself — no coding required
+
+The interactive docs page has a "Try it out" button on every endpoint, so you
+can click through the whole flow in a browser. A fun way to see it work: pipe
+events into a Discord channel and watch them arrive as chat messages.
+
+1. **Open https://hookit.fly.dev/docs**
+2. **Create a project** — expand `POST /projects`, click *Try it out*, give it
+   any name, click *Execute*. Copy the `id` from the response.
+3. **Mint an API key** — expand `POST /projects/{project_id}/api-keys`, paste
+   the project id, *Execute*. Copy the `key` — it's shown once, this is your
+   password for the next steps.
+4. **Register an endpoint** — expand `POST /endpoints`. Click the padlock icon
+   once and paste `Bearer <your key>` to authorize the whole page. Then use a
+   [Discord webhook URL](https://support.discord.com/hc/en-us/articles/228383668)
+   from a channel you own as `url`, set `payload_format` to `"discord"`, and
+   `event_types` to `["demo.ping"]`. *Execute*.
+5. **Publish an event** — expand `POST /events`, set a body like
+   `{"type": "demo.ping", "payload": {"hello": "world"}}`, *Execute*.
+6. Watch the message show up in your Discord channel within a couple of
+   seconds — and watch the delivery succeed on the
+   [dashboard](https://hookit.fly.dev/dashboard/) (paste in the same API key).
+
+No terminal, no code — just filling in forms on a web page.
+
+---
+
+## Observability dashboard
+
+A read-only console at `/dashboard/` visualizes delivery health for a project:
+status totals, terminal success rate, p50/p95/p99 latency, dead-letter depth,
+one-minute throughput, and expandable per-delivery retry timelines with inline
+redrive. It's a static single-page app that authenticates against the JSON API
+with a project API key — the same key used for `/events` and `/endpoints` — so
+no data is exposed unauthenticated.
+
+It's backed by `GET /metrics/summary`, which aggregates the `deliveries` and
+`delivery_attempts` tables directly (via `percentile_cont` for latency), so the
+numbers are durable and survive worker restarts — unlike the process-local
+Prometheus counters exposed at `/metrics`.
 
 ---
 
@@ -148,6 +225,15 @@ after a successful POST. This service chooses at-least-once + HMAC signing +
 stable event IDs so that receivers can deduplicate on their side when they need
 to. Workers re-deliver after a crash; claim leases (`leased_until`) ensure stuck
 deliveries become eligible again rather than being silently dropped.
+
+### Pluggable per-endpoint payload format
+
+Each endpoint has a `payload_format`: `raw` (the native
+`{event_id, type, payload}` envelope, the default) or `discord`, which maps the
+event onto a Discord webhook message embed so deliveries render as chat
+messages in a Discord channel. The transform lives in a pure, unit-tested
+function (`app/services/transform.py`) applied by the worker *before* signing,
+so the HMAC signature always covers the exact bytes sent to the receiver.
 
 ### SSRF handling of untrusted target URLs
 
@@ -306,7 +392,9 @@ records every attempt, and retries failures on the backoff schedule. Dead-letter
 deliveries can be redriven via `POST /deliveries/{id}/redrive`.
 
 Operational extras beyond the core delivery path: `GET /metrics` (Prometheus
-exposition), per-endpoint `rate_limit_rps` to throttle a slow receiver, and
+exposition) and `GET /metrics/summary` (dashboard-facing aggregates),
+per-endpoint `rate_limit_rps` to throttle a slow receiver, per-endpoint
+`payload_format` (`raw` or `discord`) to transform outbound deliveries, and
 `POST /endpoints/{id}/rotate-secret` for signing-secret rotation without
 downtime. Full endpoint list: `/docs`.
 
