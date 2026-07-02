@@ -4,10 +4,6 @@ At-least-once webhook delivery with exponential backoff + jitter, idempotency,
 dead-lettering, manual redrive, and HMAC-SHA256 signing — Postgres-as-queue,
 no external broker.
 
-> **Status: MVP complete, plus hardening.** API, worker, retries,
-> dead-lettering, redrive, SSRF protection, rate limiting, metrics, and an
-> observability dashboard are all live. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
-
 ## What is this?
 
 Apps need to tell other apps when something happens — "a customer paid," "an
