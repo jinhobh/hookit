@@ -64,6 +64,9 @@ _ADVISORY_LOCK_NAMESPACE = 87_412_502
 # How many received requests to retain on the receiver (a live tail, not a log).
 _INBOX_KEEP = 20
 
+# How many recent deliveries the lifecycle timeline returns (a live tail).
+_TIMELINE_KEEP = 12
+
 # Cap the stored request body so the inbox can't grow unbounded.
 _MAX_BODY_CHARS = 8_192
 
@@ -269,6 +272,26 @@ def get_scoped_delivery(
         .join(Endpoint, Delivery.endpoint_id == Endpoint.id)
         .where(Delivery.id == delivery_id, Endpoint.project_id == project_id)
     ).scalar_one_or_none()
+
+
+def list_recent_deliveries(
+    session: Session, endpoint_id: uuid.UUID, limit: int = _TIMELINE_KEEP
+) -> list[Delivery]:
+    """Return the receiver endpoint's most recent deliveries, newest first.
+
+    Attempts and the source event are eagerly loaded so the dashboard's
+    lifecycle timeline (attempt history, measured backoff gaps, live lease /
+    next-attempt countdowns) renders from one read.
+    """
+    return list(
+        session.execute(
+            select(Delivery)
+            .options(selectinload(Delivery.attempts), selectinload(Delivery.event))
+            .where(Delivery.endpoint_id == endpoint_id)
+            .order_by(Delivery.created_at.desc(), Delivery.id.desc())
+            .limit(limit)
+        ).scalars()
+    )
 
 
 def list_recent_events(session: Session, project_id: uuid.UUID, limit: int = 25) -> list[Event]:

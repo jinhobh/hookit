@@ -42,6 +42,12 @@ primary_region = "iad"  # change to a region near you / your Postgres
   # Public Discord server/channel ids for the dashboard's embedded live widget.
   DISCORD_WIDGET_SERVER_ID = "1522017033871687811"
   DISCORD_WIDGET_CHANNEL_ID = "1522017123298185451"
+  # Showcase retry tuning: a full retry → dead-letter cycle stays watchable
+  # (~5+10+20+40 s ≈ 75 s across 5 attempts) instead of the production-default
+  # ~5 minutes. The dashboard's fast-forward button remains the impatient path.
+  RETRY_BASE_SECONDS = "5"
+  RETRY_CAP_SECONDS = "60"
+  MAX_DELIVERY_ATTEMPTS = "5"
 
 # HTTP is served only by the `app` process group.
 [http_service]

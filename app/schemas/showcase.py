@@ -60,6 +60,48 @@ class FeedResponse(BaseModel):
     inbox: list[ReceivedRequestItem]
 
 
+class TimelineAttemptItem(BaseModel):
+    """One recorded HTTP attempt on a showcase delivery."""
+
+    attempt_number: int
+    response_status: int | None = None
+    error: str | None = None
+    duration_ms: int | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TimelineDeliveryItem(BaseModel):
+    """One recent delivery to the controllable receiver, with its attempt history."""
+
+    id: uuid.UUID
+    event_id: uuid.UUID
+    event_type: str
+    status: str
+    attempt_count: int
+    next_attempt_at: datetime
+    leased_until: datetime | None = None
+    created_at: datetime
+    attempts: list[TimelineAttemptItem]
+
+
+class DeliveriesResponse(BaseModel):
+    """Returned by GET /showcase/deliveries — the delivery lifecycle timeline.
+
+    Carries the live retry configuration and the server clock so the dashboard
+    can annotate each measured gap with the nominal backoff formula
+    ``min(base·2^(n−1), cap)`` and run drift-free countdowns.
+    """
+
+    server_time: datetime
+    retry_base_seconds: float
+    retry_cap_seconds: float
+    max_delivery_attempts: int
+    receiver_endpoint_id: uuid.UUID
+    deliveries: list[TimelineDeliveryItem]
+
+
 class DeadLetterResponse(BaseModel):
     """Returned by POST /showcase/dead-letter."""
 

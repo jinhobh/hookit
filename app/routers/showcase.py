@@ -6,6 +6,9 @@ with no API key while no real customer data is ever exposed:
 
 - ``GET  /showcase/summary``     — delivery health metrics for the showcase project.
 - ``GET  /showcase/feed``        — the live producer event feed + receiver inbox/health.
+- ``GET  /showcase/deliveries``  — the receiver's recent deliveries with their full
+  attempt history, lease state, and the live retry configuration (the dashboard's
+  delivery lifecycle timeline).
 - ``POST /showcase/health``      — take the controllable receiver up or down.
 - ``POST /showcase/dead-letter`` — fast-forward one delivery to the DLQ (receiver
   must be down) so redrive recovery is watchable without a ~5 min backoff wait.
@@ -37,6 +40,7 @@ from app.schemas.metrics import MetricsSummaryResponse
 from app.schemas.showcase import (
     BurstResponse,
     DeadLetterResponse,
+    DeliveriesResponse,
     FeedEventItem,
     FeedResponse,
     HealthRequest,
@@ -44,6 +48,8 @@ from app.schemas.showcase import (
     ReceivedRequestItem,
     RedriveRequest,
     RedriveResponse,
+    TimelineAttemptItem,
+    TimelineDeliveryItem,
 )
 from app.services.crypto import decrypt_secret
 from app.services.metrics import delivery_summary
@@ -55,6 +61,7 @@ from app.services.showcase import (
     get_scoped_delivery,
     latest_dead_lettered_id,
     list_inbox,
+    list_recent_deliveries,
     list_recent_events,
     record_received_request,
     resolve_showcase,
@@ -118,6 +125,43 @@ def feed(
         discord_widget_channel_id=settings.discord_widget_channel_id or None,
         events=events,
         inbox=inbox,
+    )
+
+
+@router.get("/deliveries", response_model=DeliveriesResponse)
+def deliveries(
+    handles: ShowcaseHandles = Depends(get_showcase),
+    session: Session = Depends(get_session),
+) -> DeliveriesResponse:
+    """Return the receiver's recent deliveries with attempts + retry config.
+
+    Public read backing the dashboard's delivery lifecycle timeline: real
+    ``Delivery`` / ``DeliveryAttempt`` rows written by the production worker,
+    plus the live retry settings and server clock so measured backoff gaps can
+    be compared against the nominal ``min(base·2^(n−1), cap)`` schedule.
+    """
+    settings = get_settings()
+    items = [
+        TimelineDeliveryItem(
+            id=d.id,
+            event_id=d.event_id,
+            event_type=d.event.type,
+            status=d.status.value,
+            attempt_count=d.attempt_count,
+            next_attempt_at=d.next_attempt_at,
+            leased_until=d.leased_until,
+            created_at=d.created_at,
+            attempts=[TimelineAttemptItem.model_validate(a) for a in d.attempts],
+        )
+        for d in list_recent_deliveries(session, handles.receiver_endpoint_id)
+    ]
+    return DeliveriesResponse(
+        server_time=datetime.now(UTC),
+        retry_base_seconds=settings.retry_base_seconds,
+        retry_cap_seconds=settings.retry_cap_seconds,
+        max_delivery_attempts=settings.max_delivery_attempts,
+        receiver_endpoint_id=handles.receiver_endpoint_id,
+        deliveries=items,
     )
 
 

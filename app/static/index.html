@@ -127,6 +127,30 @@
       .discord iframe { width: 100%; height: 560px; border: 0; display: block; }
       .discord .msg { padding: 40px 24px; }
 
+      /* Delivery lifecycle timeline */
+      .lifecycle { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 22px; }
+      .dl-item { border-bottom: 1px solid var(--border); padding: 10px 14px; }
+      .dl-item:last-child { border-bottom: none; }
+      .dl-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+      .badge { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 2px 8px; border-radius: 999px; }
+      .badge.pending { color: var(--amber); background: rgba(251,191,36,0.16); }
+      .badge.in_flight { color: var(--blue); background: rgba(96,165,250,0.16); }
+      .badge.succeeded { color: var(--green); background: rgba(52,211,153,0.14); }
+      .badge.failed { color: var(--amber); background: rgba(251,191,36,0.16); }
+      .badge.dead_lettered { color: var(--red); background: rgba(248,113,113,0.16); }
+      .dl-head .evt { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+      .dl-head .att { color: var(--muted); font-size: 12px; }
+      .dl-head .countdown { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--amber); }
+      .dl-head .countdown.lease { color: var(--blue); }
+      .tl { margin: 8px 0 0 5px; border-left: 2px solid var(--border); padding: 2px 0 2px 12px; }
+      .tl-attempt { display: flex; align-items: center; gap: 10px; padding: 2px 0; font-family: ui-monospace, Menlo, monospace; font-size: 12px; flex-wrap: wrap; }
+      .tl-attempt .num { color: var(--muted); }
+      .tl-attempt .dur { color: var(--muted); }
+      .tl-attempt .when { color: var(--muted); margin-left: auto; }
+      .tl-gap { color: var(--muted); font-size: 11.5px; padding: 1px 0 1px 14px; }
+      .tl-gap b { color: var(--slate); font-weight: 600; }
+      .tl-next { color: var(--amber); font-size: 11.5px; padding: 1px 0 1px 14px; }
+
       /* Request inbox */
       .inbox { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
       .inbox-item { border-bottom: 1px solid var(--border); }
@@ -181,6 +205,7 @@
             <span class="cg-label">Your pipeline</span>
             <span id="health-pill" class="pill up">● Healthy</span>
             <button id="health-btn" class="danger">Bring pipeline down</button>
+            <button id="forge-btn" class="ghost" title="POST an unsigned payload straight to your receiver from this browser — watch it get rejected 401">Send forged request 🕵</button>
             <a id="force-dlq" class="dlq-link" href="#" hidden>force one to dead-letter →</a>
             <a id="redrive-link" class="dlq-link" href="#" hidden style="color: var(--accent); border-color: var(--accent);">redrive dead-letters →</a>
           </div>
@@ -192,6 +217,11 @@
       <p class="section-title">Live price feed · real events published to <code>POST /events</code></p>
       <div id="feed-wrap" class="feed">
         <p class="msg">Waiting for the producer's first ticks…</p>
+      </div>
+
+      <p class="section-title">Delivery lifecycle · every attempt, backoff gap, and lease — straight from the engine's own rows</p>
+      <div id="lifecycle-wrap" class="lifecycle">
+        <p class="msg">Recent deliveries to your pipeline appear here with their full retry history.</p>
       </div>
 
       <div class="grid">
@@ -218,7 +248,10 @@
       let health = true; // last-known pipeline health
       let dlqDepth = 0; // last-known dead-letter depth
       let timer = null;
+      let tickTimer = null; // sub-second lifecycle countdown re-render
       let discordLoaded = false;
+      let lifecycle = null; // last GET /showcase/deliveries response
+      let serverDelta = 0; // server clock minus browser clock, ms
 
       $("base").value = localStorage.getItem(BASE_LS) || "";
 
@@ -282,6 +315,18 @@
           }
         });
       });
+
+      $("forge-btn").addEventListener("click", () =>
+        act($("forge-btn"), "Forging…", async () => {
+          if (!lifecycle) throw new Error("receiver not resolved yet");
+          const res = await fetch(apiBase() + "/showcase/receiver/" + lifecycle.receiver_endpoint_id, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" }, // no signature on purpose
+            body: JSON.stringify({ type: "price.tick", payload: { symbol: "BTC-USD", price: "999999", forged: true } }),
+          });
+          if (res.status !== 401) throw new Error("expected 401, got HTTP " + res.status);
+          // Success is the rejection: it shows in the inbox as ✗ unsigned → 401.
+        }));
 
       $("redrive-link").addEventListener("click", (e) => {
         e.preventDefault();
@@ -359,6 +404,66 @@
           : `<p class="msg">Waiting for the producer's first ticks… is <code>python -m producer</code> running?</p>`;
       }
 
+      // ---- rendering: delivery lifecycle timeline -------------------------
+      function serverNow() { return Date.now() + serverDelta; }
+      function fmtSecs(ms) { return (ms / 1000).toFixed(1) + "s"; }
+      function nominalDelay(attemptNumber, cfg) {
+        // Mirrors app/worker/backoff.py: min(base * 2^(n-1), cap), before jitter.
+        return Math.min(cfg.retry_base_seconds * Math.pow(2, attemptNumber - 1), cfg.retry_cap_seconds) * 1000;
+      }
+      function attemptLabel(a) {
+        if (a.response_status != null) {
+          const cls = a.response_status < 400 ? "ok" : "err";
+          return `<span class="status-code ${cls}">${a.response_status}</span>`;
+        }
+        return `<span class="status-code err" title="${esc(a.error || "")}">network error</span>`;
+      }
+      function deliveryRow(d, cfg) {
+        const now = serverNow();
+        let countdown = "";
+        if (d.status === "pending" && d.attempt_count > 0) {
+          const left = new Date(d.next_attempt_at).getTime() - now;
+          if (left > 0) countdown = `<span class="countdown">retry #${d.attempt_count + 1} in ${fmtSecs(left)}</span>`;
+        } else if (d.status === "in_flight" && d.leased_until) {
+          const left = new Date(d.leased_until).getTime() - now;
+          if (left > 0) countdown = `<span class="countdown lease">lease expires in ${fmtSecs(left)}</span>`;
+        }
+        let rows = "";
+        for (let i = 0; i < d.attempts.length; i++) {
+          const a = d.attempts[i];
+          rows += `<div class="tl-attempt"><span class="num">#${a.attempt_number}</span>` +
+            attemptLabel(a) +
+            (a.duration_ms != null ? `<span class="dur">${a.duration_ms} ms</span>` : "") +
+            `<span class="when">${fmtTime(a.created_at)}</span></div>`;
+          const next = d.attempts[i + 1];
+          if (next) {
+            // The observed gap between consecutive attempts vs the nominal
+            // backoff min(base·2^(n−1), cap) — the difference IS the jitter.
+            const gap = new Date(next.created_at).getTime() - new Date(a.created_at).getTime();
+            const nominal = nominalDelay(a.attempt_number, cfg);
+            const jitter = gap - nominal;
+            rows += `<div class="tl-gap">↓ waited <b>${fmtSecs(gap)}</b> — nominal min(${cfg.retry_base_seconds}·2^${a.attempt_number - 1}, ${cfg.retry_cap_seconds}) = ${fmtSecs(nominal)} ${jitter >= 0 ? "+" : "−"} ${fmtSecs(Math.abs(jitter))} jitter</div>`;
+          }
+        }
+        if (d.status === "pending" && d.attempt_count > 0 && d.attempts.length) {
+          const nominal = nominalDelay(d.attempt_count, cfg);
+          const left = new Date(d.next_attempt_at).getTime() - now;
+          rows += `<div class="tl-next">↓ next: attempt #${d.attempt_count + 1} scheduled — nominal ${fmtSecs(nominal)} + jitter${left > 0 ? `, firing in ${fmtSecs(left)}` : " (due now)"}</div>`;
+        }
+        return `<div class="dl-item"><div class="dl-head">` +
+          `<span class="badge ${esc(d.status)}">${esc(d.status.replace("_", " "))}</span>` +
+          `<span class="evt">${esc(d.event_type)}</span>` +
+          `<span class="att">attempt ${d.attempt_count}/${cfg.max_delivery_attempts}</span>` +
+          countdown +
+          `</div>` + (rows ? `<div class="tl">${rows}</div>` : "") + `</div>`;
+      }
+      function renderLifecycle() {
+        if (!lifecycle) return;
+        $("lifecycle-wrap").innerHTML = lifecycle.deliveries.length
+          ? lifecycle.deliveries.map((d) => deliveryRow(d, lifecycle)).join("")
+          : `<p class="msg">No deliveries yet — they appear here the moment the producer's next tick fans out.</p>`;
+      }
+
       // ---- rendering: request inbox --------------------------------------
       function prettyBody(body) {
         try { return JSON.stringify(JSON.parse(body), null, 2); } catch { return body; }
@@ -414,13 +519,17 @@
       // ---- polling -------------------------------------------------------
       async function refresh() {
         try {
-          const [summary, feed] = await Promise.all([
+          const [summary, feed, dels] = await Promise.all([
             api("/showcase/summary"),
             api("/showcase/feed"),
+            api("/showcase/deliveries"),
           ]);
           dlqDepth = summary.dlq_depth;
+          lifecycle = dels;
+          serverDelta = new Date(dels.server_time).getTime() - Date.now();
           renderCards(summary);
           renderFeed(feed.events);
+          renderLifecycle();
           renderInbox(feed.inbox);
           ensureDiscord(feed);
           health = feed.healthy; renderHealth();
@@ -432,9 +541,12 @@
       }
       function start() {
         if (timer) { clearInterval(timer); timer = null; }
+        if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
         renderHealth();
         refresh();
         timer = setInterval(refresh, 2000);
+        // Countdowns tick between polls from the cached snapshot.
+        tickTimer = setInterval(renderLifecycle, 250);
       }
 
       start();
