@@ -7,9 +7,11 @@ backed by Postgres. Pairs with the repo-root [`fly.toml`](../fly.toml).
 > file (Fly requires a card even for the small/free allowances). Nothing here
 > commits secrets to git; all secrets live in `fly secrets`.
 
-The deploy runs **two process groups from one image**: `app` (FastAPI) and
-`worker` (`python -m app.worker`). Schema migrations run automatically on every
-deploy via `release_command = "alembic upgrade head"`.
+The deploy runs **three process groups from one image**: `app` (FastAPI),
+`worker` (`python -m app.worker`), and `producer` (`python -m producer`, the
+live-showcase price producer). Schema migrations **and** showcase seeding run
+automatically on every deploy via
+`release_command = "sh -c 'alembic upgrade head && python -m app.seed_showcase'"`.
 
 ---
 
@@ -69,6 +71,26 @@ fly secrets set --app YOUR-APP \
 
 > Setting secrets triggers a restart — that's expected. Config maps env → settings
 > in `app/core/config.py` (e.g. `ENDPOINT_SECRET_KEY` → `endpoint_secret_key`).
+
+### Live showcase secrets
+
+The live demo needs a shared API key (used by both the seeder and the `producer`
+process) and a real Discord webhook URL. Generate a key and set both — note
+`SHOWCASE_API_KEY` and `PLATFORM_API_KEY` must be the **same value**:
+
+```bash
+KEY="whk_$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+fly secrets set --app YOUR-APP \
+  SHOWCASE_API_KEY="$KEY" \
+  PLATFORM_API_KEY="$KEY" \
+  SHOWCASE_DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/…"
+```
+
+Then set the (non-secret) embedded-widget ids in `fly.toml`'s `[env]`
+(`DISCORD_WIDGET_SERVER_ID`, `DISCORD_WIDGET_CHANNEL_ID`) to your Discord server
++ channel so the dashboard can embed the live channel. Leaving the Discord
+secrets unset simply disables the Discord endpoint — the reliability demo still
+works. `PLATFORM_API_URL` and `PRODUCER_BASE_URL` are already wired in `[env]`.
 
 ## 4. Deploy
 

@@ -10,9 +10,11 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
 from app.middleware import RequestIDFilter, RequestIDMiddleware
-from app.routers import deliveries, endpoints, events, me, metrics, projects, simulate
+from app.routers import deliveries, endpoints, events, me, metrics, projects, showcase
 
 _STATIC_DIR = Path(__file__).parent / "static"
+
+logger = logging.getLogger(__name__)
 
 
 def create_app() -> FastAPI:
@@ -36,6 +38,11 @@ def create_app() -> FastAPI:
     root_logger.handlers.clear()
     root_logger.addHandler(handler)
 
+    # httpx logs each request's full URL at INFO; outbound webhook URLs can embed
+    # credentials (e.g. a Discord webhook token), so keep it at WARNING to avoid
+    # leaking secrets into logs (see CLAUDE.md §9).
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
     application = FastAPI(
         title=settings.app_name,
         version="0.1.0",
@@ -50,7 +57,9 @@ def create_app() -> FastAPI:
     application.include_router(events.router)
     application.include_router(deliveries.router)
     application.include_router(metrics.router)
-    application.include_router(simulate.router)
+    application.include_router(showcase.router)
+
+    _seed_showcase_best_effort()
 
     @application.get("/health", tags=["system"])
     def health() -> dict[str, str]:
@@ -68,6 +77,25 @@ def create_app() -> FastAPI:
     )
 
     return application
+
+
+def _seed_showcase_best_effort() -> None:
+    """Seed the shared showcase project at startup, tolerating an absent database.
+
+    The live demo needs its project/endpoints/key to exist; seeding is idempotent
+    so running it on every boot is safe. It must never crash startup, though —
+    ``/health`` must stay up even if the database is unreachable — so any failure
+    is logged and swallowed (the ``/showcase/*`` routes also self-heal on demand).
+    """
+    from app.db.session import SessionLocal
+    from app.services.showcase import seed_showcase
+
+    try:
+        with SessionLocal() as session:
+            seed_showcase(session)
+            session.commit()
+    except Exception as exc:  # noqa: BLE001 — startup must not fail on DB issues
+        logger.warning("showcase seeding skipped at startup: %s", exc)
 
 
 app = create_app()

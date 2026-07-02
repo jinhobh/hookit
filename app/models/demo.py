@@ -1,17 +1,17 @@
-"""ORM models backing the interactive dashboard demo ("Ops Console").
+"""ORM models backing the live showcase demo's controllable receiver.
 
-Both tables are demo-scoped and keyed to a demo ``Endpoint`` (the reserved,
-self-referential receiver created by ``app.services.simulate``). They never
-touch real customer endpoints.
+Both tables are demo-scoped and keyed to the reserved, self-referential receiver
+``Endpoint`` created by ``app.services.showcase``. They never touch real customer
+endpoints.
 
 - ``DemoReceiverHealth`` is the toggle the visitor flips to take their
-  downstream "deploy pipeline" up or down. It lives in the database (not
-  process memory) so it is visible across connections: the toggle write and
-  the ``/simulate/receiver`` read resolve independent sessions, and the real
+  downstream "pipeline" up or down. It lives in the database (not process
+  memory) so it is visible across connections: the toggle write and the
+  ``/showcase/receiver`` read resolve independent sessions, and the real
   out-of-process worker's delivery attempts must observe the current value.
-- ``DemoReceivedRequest`` is the endpoint-side inbox: every request the demo
-  receiver actually accepts is recorded with its real signed headers and body
-  so the dashboard can prove genuine, HMAC-signed HTTP deliveries arrived.
+- ``DemoReceivedRequest`` is the endpoint-side inbox: every request the receiver
+  actually accepts is recorded with its real signed headers and body so the
+  dashboard can prove genuine, HMAC-signed HTTP deliveries arrived.
 """
 
 from __future__ import annotations
@@ -30,9 +30,9 @@ def _utcnow() -> datetime:
 
 
 class DemoReceiverHealth(Base):
-    """Current health of a demo receiver ("your deploy pipeline").
+    """Current health of the controllable receiver ("your pipeline").
 
-    One row per demo endpoint. ``healthy=False`` makes ``/simulate/receiver``
+    One row per receiver endpoint. ``healthy=False`` makes ``/showcase/receiver``
     answer 503, so the visitor can watch the platform retry, back off, and
     dead-letter — then flip it back and redrive to recover.
     """
@@ -52,12 +52,12 @@ class DemoReceiverHealth(Base):
 
 
 class DemoReceivedRequest(Base):
-    """One HTTP request the demo receiver actually accepted (the endpoint inbox).
+    """One HTTP request the receiver actually accepted (the endpoint inbox).
 
     Captured at receive time — the signature header in particular cannot be
     reconstructed later, since it is keyed to the exact send timestamp — so the
     dashboard can display the real signed request that arrived. Pruned to the
-    most recent few per endpoint by ``app.services.simulate``.
+    most recent few per endpoint by ``app.services.showcase``.
     """
 
     __tablename__ = "demo_received_requests"

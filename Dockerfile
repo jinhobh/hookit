@@ -9,6 +9,10 @@ RUN useradd --no-create-home --shell /bin/false appuser
 COPY pyproject.toml README.md ./
 COPY app/ ./app/
 
+# The standalone live-showcase producer runs from source as its own Fly process
+# group (`python -m producer`); it shares the image and the app's dependencies.
+COPY producer/ ./producer/
+
 # Include Alembic config + migrations so the image can run `alembic upgrade head`
 # (used by the Fly release_command and any container-driven migration step).
 COPY alembic.ini ./
