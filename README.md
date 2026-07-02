@@ -1,4 +1,4 @@
-# Reliable Webhook Delivery Platform
+# HookIt is a: Reliable Webhook Delivery Platform
 
 At-least-once webhook delivery with exponential backoff + jitter, idempotency,
 dead-lettering, manual redrive, and HMAC-SHA256 signing — Postgres-as-queue,
@@ -32,7 +32,6 @@ Hosted on [Fly.io](https://fly.io) with Postgres on [Neon](https://neon.tech):
   retries → backoff → dead-letter → redrive happen on live traffic.
 - **API docs:** https://hookit.fly.dev/docs — try any endpoint directly.
 - **Health check:** https://hookit.fly.dev/health
-
 This is an API, not a website — `/` returns `404` by design; start at
 `/dashboard/` or `/docs`. The instance scales to zero when idle, so the first
 request after a quiet period may take a second or two.
@@ -40,7 +39,6 @@ request after a quiet period may take a second or two.
 Full walkthrough (mint a key, register an endpoint, publish an event) and how
 the dashboard/producer/Discord demo is wired: [`docs/DEPLOY.md`](docs/DEPLOY.md)
 and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
-
 ## Architecture
 
 Two processes share one PostgreSQL database. Ingestion and delivery are
@@ -83,7 +81,6 @@ Full design, sequence diagram, and the delivery lifecycle:
   target IPs at registration time (`app/services/ssrf.py`).
 
 Rationale and tradeoffs for each: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
-
 ## Run locally
 
 Requires Python 3.12 and Docker.
@@ -138,7 +135,6 @@ approves or requests changes, and CI-green + approved PRs auto-merge — no
 human merge required day to day. Rules live in [`CLAUDE.md`](CLAUDE.md) and
 [`agents/`](agents/); full lifecycle in
 [`docs/AGENT_WORKFLOW.md`](docs/AGENT_WORKFLOW.md).
-
 ## License
 
 MIT.

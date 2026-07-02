@@ -86,6 +86,47 @@ def test_create_project_no_auth_required(client: TestClient) -> None:
 
 
 # ---------------------------------------------------------------------------
+# GET /projects/{project_id}
+# ---------------------------------------------------------------------------
+
+
+def test_get_project_returns_200(client: TestClient) -> None:
+    create_resp = client.post("/projects", json={"name": "detail-project"})
+    assert create_resp.status_code == 201
+    project_id = create_resp.json()["id"]
+
+    resp = client.get(f"/projects/{project_id}")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["id"] == project_id
+    assert data["name"] == "detail-project"
+    assert "created_at" in data
+
+
+def test_get_project_response_shape(client: TestClient) -> None:
+    create_resp = client.post("/projects", json={"name": "detail-shape"})
+    project_id = create_resp.json()["id"]
+
+    resp = client.get(f"/projects/{project_id}")
+    assert resp.status_code == 200
+    assert set(resp.json().keys()) == {"id", "name", "created_at"}
+
+
+def test_get_project_nonexistent_returns_404(client: TestClient) -> None:
+    fake_id = str(uuid.uuid4())
+    resp = client.get(f"/projects/{fake_id}")
+    assert resp.status_code == 404
+    assert "not found" in resp.json()["detail"].lower()
+
+
+def test_get_project_no_auth_required(client: TestClient) -> None:
+    create_resp = client.post("/projects", json={"name": "detail-no-auth"})
+    project_id = create_resp.json()["id"]
+    resp = client.get(f"/projects/{project_id}")
+    assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
 # POST /projects/{project_id}/api-keys
 # ---------------------------------------------------------------------------
 
@@ -259,7 +300,7 @@ def test_revoke_api_key_no_auth_required(client: TestClient) -> None:
 
 
 def test_list_api_keys_multiple(client: TestClient) -> None:
-    """Project with multiple keys returns all of them, never key_hash."""
+    """Project with multiple keys returns envelope with items, never key_hash."""
     project_resp = client.post("/projects", json={"name": "list-multi-project"})
     project_id = project_resp.json()["id"]
     client.post(f"/projects/{project_id}/api-keys", json={"name": "key-alpha"})
@@ -267,11 +308,13 @@ def test_list_api_keys_multiple(client: TestClient) -> None:
 
     resp = client.get(f"/projects/{project_id}/api-keys")
     assert resp.status_code == 200
-    data = resp.json()
-    assert len(data) == 2
-    names = {item["name"] for item in data}
+    envelope = resp.json()
+    assert set(envelope.keys()) == {"items", "next_cursor"}
+    items = envelope["items"]
+    assert len(items) == 2
+    names = {item["name"] for item in items}
     assert names == {"key-alpha", "key-beta"}
-    for item in data:
+    for item in items:
         assert set(item.keys()) == {
             "id",
             "prefix",
@@ -285,13 +328,15 @@ def test_list_api_keys_multiple(client: TestClient) -> None:
 
 
 def test_list_api_keys_empty_project(client: TestClient) -> None:
-    """Project with no keys returns 200 with an empty array."""
+    """Project with no keys returns 200 with an empty items list."""
     project_resp = client.post("/projects", json={"name": "list-empty-project"})
     project_id = project_resp.json()["id"]
 
     resp = client.get(f"/projects/{project_id}/api-keys")
     assert resp.status_code == 200
-    assert resp.json() == []
+    envelope = resp.json()
+    assert envelope["items"] == []
+    assert envelope["next_cursor"] is None
 
 
 def test_list_api_keys_nonexistent_project_returns_404(client: TestClient) -> None:
@@ -301,8 +346,8 @@ def test_list_api_keys_nonexistent_project_returns_404(client: TestClient) -> No
     assert resp.status_code == 404
 
 
-def test_list_api_keys_ordered_by_created_at(client: TestClient) -> None:
-    """Keys are returned oldest-first."""
+def test_list_api_keys_ordered_by_created_at_desc(client: TestClient) -> None:
+    """Keys are returned newest-first (descending created_at) to match all other paginated lists."""
     project_resp = client.post("/projects", json={"name": "list-order-project"})
     project_id = project_resp.json()["id"]
     resp1 = client.post(f"/projects/{project_id}/api-keys", json={"name": "first"})
@@ -313,10 +358,11 @@ def test_list_api_keys_ordered_by_created_at(client: TestClient) -> None:
 
     resp = client.get(f"/projects/{project_id}/api-keys")
     assert resp.status_code == 200
-    data = resp.json()
-    assert len(data) == 3
-    ids = [item["id"] for item in data]
-    assert ids == [resp1.json()["id"], resp2.json()["id"], resp3.json()["id"]]
+    items = resp.json()["items"]
+    assert len(items) == 3
+    ids = [item["id"] for item in items]
+    # Newest first
+    assert ids == [resp3.json()["id"], resp2.json()["id"], resp1.json()["id"]]
 
 
 def test_list_api_keys_revoked_key_shows_revoked_at(client: TestClient) -> None:
@@ -326,9 +372,9 @@ def test_list_api_keys_revoked_key_shows_revoked_at(client: TestClient) -> None:
 
     resp = client.get(f"/projects/{project_id}/api-keys")
     assert resp.status_code == 200
-    data = resp.json()
-    assert len(data) == 1
-    assert data[0]["revoked_at"] is not None
+    items = resp.json()["items"]
+    assert len(items) == 1
+    assert items[0]["revoked_at"] is not None
 
 
 def test_list_api_keys_active_key_has_null_revoked_at(client: TestClient) -> None:
@@ -337,6 +383,77 @@ def test_list_api_keys_active_key_has_null_revoked_at(client: TestClient) -> Non
 
     resp = client.get(f"/projects/{project_id}/api-keys")
     assert resp.status_code == 200
-    data = resp.json()
-    assert len(data) == 1
-    assert data[0]["revoked_at"] is None
+    items = resp.json()["items"]
+    assert len(items) == 1
+    assert items[0]["revoked_at"] is None
+
+
+def test_list_api_keys_single_page_no_cursor(client: TestClient) -> None:
+    """Single page of results returns items with next_cursor=None."""
+    project_resp = client.post("/projects", json={"name": "single-page-project"})
+    project_id = project_resp.json()["id"]
+    client.post(f"/projects/{project_id}/api-keys", json={"name": "only-key"})
+
+    resp = client.get(f"/projects/{project_id}/api-keys", params={"limit": 20})
+    assert resp.status_code == 200
+    envelope = resp.json()
+    assert len(envelope["items"]) == 1
+    assert envelope["next_cursor"] is None
+
+
+def test_list_api_keys_pagination_across_pages(client: TestClient) -> None:
+    """next_cursor is set when results exceed limit; second request returns remaining items."""
+    project_resp = client.post("/projects", json={"name": "paginate-project"})
+    project_id = project_resp.json()["id"]
+    for i in range(3):
+        client.post(f"/projects/{project_id}/api-keys", json={"name": f"key-{i}"})
+        time.sleep(0.002)
+
+    # First page: limit=2 should return 2 items and a cursor
+    resp1 = client.get(f"/projects/{project_id}/api-keys", params={"limit": 2})
+    assert resp1.status_code == 200
+    page1 = resp1.json()
+    assert len(page1["items"]) == 2
+    assert page1["next_cursor"] is not None
+
+    # Second page: use cursor, should return 1 remaining item with no next cursor
+    resp2 = client.get(
+        f"/projects/{project_id}/api-keys",
+        params={"limit": 2, "cursor": page1["next_cursor"]},
+    )
+    assert resp2.status_code == 200
+    page2 = resp2.json()
+    assert len(page2["items"]) == 1
+    assert page2["next_cursor"] is None
+
+    # All IDs across pages are unique and no overlap
+    ids1 = {item["id"] for item in page1["items"]}
+    ids2 = {item["id"] for item in page2["items"]}
+    assert ids1.isdisjoint(ids2)
+
+
+def test_list_api_keys_invalid_cursor_returns_422(client: TestClient) -> None:
+    """An invalid cursor value must return 422."""
+    project_resp = client.post("/projects", json={"name": "cursor-422-project"})
+    project_id = project_resp.json()["id"]
+
+    resp = client.get(
+        f"/projects/{project_id}/api-keys",
+        params={"cursor": "not-a-valid-cursor"},
+    )
+    assert resp.status_code == 422
+
+
+def test_list_api_keys_key_hash_never_in_response(client: TestClient) -> None:
+    """key_hash must never appear anywhere in the paginated response."""
+    project_resp = client.post("/projects", json={"name": "hash-guard-project"})
+    project_id = project_resp.json()["id"]
+    client.post(f"/projects/{project_id}/api-keys", json={"name": "safe-key"})
+
+    resp = client.get(f"/projects/{project_id}/api-keys")
+    assert resp.status_code == 200
+    import json
+
+    raw = json.dumps(resp.json())
+    assert "key_hash" not in raw
+    assert "hash" not in raw

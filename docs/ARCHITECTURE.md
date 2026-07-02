@@ -175,8 +175,7 @@ live in the dashboard), and a **controllable receiver** that receives every
   HTTP round trips (to real Discord and to a self-referential receiver), real
   `DeliveryAttempt` rows.
 - **Failure is a real, DB-backed toggle — not baked into payloads.**
-  `POST /showcase/health` upserts `DemoReceiverHealth`, which the receiver reads
-  on every request. Because the flag lives in the database (not process memory),
+  `POST /showcase/health` upserts `DemoReceiverHealth`, which the receiver reads  on every request. Because the flag lives in the database (not process memory),
   the toggle write and the receiver read resolve independent sessions, and the
   out-of-process worker observes the current value — so an *in-flight* retry
   recovers the moment the visitor brings the pipeline back up. This is also why
@@ -184,13 +183,11 @@ live in the dashboard), and a **controllable receiver** that receives every
   not permanently broken.
 - **One delivery is fast-forwarded, not fabricated.** Real backoff (base=10s,
   cap=1h, 6 attempts) would take ~5 real minutes to reach dead-lettered.
-  `POST /showcase/dead-letter` (only allowed while the pipeline is down) instead
-  calls `process_delivery()` back-to-back with no wait on `next_attempt_at` —
+  `POST /showcase/dead-letter` (only allowed while the pipeline is down) instead  calls `process_delivery()` back-to-back with no wait on `next_attempt_at` —
   real signing and recording, only the *wait* is skipped, isolated in
   `_fast_forward_to_dead_letter`.
 - **Two-phase commit, deliberately.** The dead-letter path commits once after
-  publishing the event (so the out-of-process worker and the `/showcase/receiver`
-  route — each resolving their own DB session — can see the row under Postgres'
+  publishing the event (so the out-of-process worker and the `/showcase/receiver`  route — each resolving their own DB session — can see the row under Postgres'
   `READ COMMITTED` default) and again after the fast-forward. A documented
   exception to the usual "router commits once" convention.
 - **Concurrency-safe against the real worker.** The target delivery is loaded
