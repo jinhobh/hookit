@@ -471,6 +471,177 @@ def test_list_deliveries_filter_by_event_id_from_other_project_returns_empty(
     assert data["items"] == []
 
 
+def test_list_deliveries_filter_created_after(client: TestClient, dl_db_session: Session) -> None:
+    project, key = _make_project_and_key(dl_db_session, "project-dl-created-after")
+    endpoint = _make_endpoint(dl_db_session, project.id)
+
+    t_old = datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC)
+    t_new = datetime(2024, 6, 1, 0, 0, 0, tzinfo=UTC)
+
+    event1 = _make_event(dl_db_session, project.id)
+    old_delivery = _make_delivery(dl_db_session, event1, endpoint)
+    old_delivery.created_at = t_old
+    dl_db_session.flush()
+
+    event2 = _make_event(dl_db_session, project.id)
+    new_delivery = _make_delivery(dl_db_session, event2, endpoint)
+    new_delivery.created_at = t_new
+    dl_db_session.flush()
+
+    resp = client.get("/deliveries?created_after=2024-03-01T00:00:00Z", headers=_auth(key))
+    assert resp.status_code == 200
+    ids = {item["id"] for item in resp.json()["items"]}
+    assert str(new_delivery.id) in ids
+    assert str(old_delivery.id) not in ids
+
+
+def test_list_deliveries_filter_created_before(client: TestClient, dl_db_session: Session) -> None:
+    project, key = _make_project_and_key(dl_db_session, "project-dl-created-before")
+    endpoint = _make_endpoint(dl_db_session, project.id)
+
+    t_old = datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC)
+    t_new = datetime(2024, 6, 1, 0, 0, 0, tzinfo=UTC)
+
+    event1 = _make_event(dl_db_session, project.id)
+    old_delivery = _make_delivery(dl_db_session, event1, endpoint)
+    old_delivery.created_at = t_old
+    dl_db_session.flush()
+
+    event2 = _make_event(dl_db_session, project.id)
+    new_delivery = _make_delivery(dl_db_session, event2, endpoint)
+    new_delivery.created_at = t_new
+    dl_db_session.flush()
+
+    resp = client.get("/deliveries?created_before=2024-03-01T00:00:00Z", headers=_auth(key))
+    assert resp.status_code == 200
+    ids = {item["id"] for item in resp.json()["items"]}
+    assert str(old_delivery.id) in ids
+    assert str(new_delivery.id) not in ids
+
+
+def test_list_deliveries_filter_created_after_and_before(
+    client: TestClient, dl_db_session: Session
+) -> None:
+    project, key = _make_project_and_key(dl_db_session, "project-dl-created-range")
+    endpoint = _make_endpoint(dl_db_session, project.id)
+
+    t_before = datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC)
+    t_in_range = datetime(2024, 4, 1, 0, 0, 0, tzinfo=UTC)
+    t_after = datetime(2024, 8, 1, 0, 0, 0, tzinfo=UTC)
+
+    event1 = _make_event(dl_db_session, project.id)
+    d_before = _make_delivery(dl_db_session, event1, endpoint)
+    d_before.created_at = t_before
+
+    event2 = _make_event(dl_db_session, project.id)
+    d_in = _make_delivery(dl_db_session, event2, endpoint)
+    d_in.created_at = t_in_range
+
+    event3 = _make_event(dl_db_session, project.id)
+    d_after = _make_delivery(dl_db_session, event3, endpoint)
+    d_after.created_at = t_after
+    dl_db_session.flush()
+
+    resp = client.get(
+        "/deliveries?created_after=2024-02-01T00:00:00Z&created_before=2024-06-01T00:00:00Z",
+        headers=_auth(key),
+    )
+    assert resp.status_code == 200
+    ids = {item["id"] for item in resp.json()["items"]}
+    assert str(d_in.id) in ids
+    assert str(d_before.id) not in ids
+    assert str(d_after.id) not in ids
+
+
+def test_list_deliveries_created_range_combined_with_status(
+    client: TestClient, dl_db_session: Session
+) -> None:
+    project, key = _make_project_and_key(dl_db_session, "project-dl-range-status")
+    endpoint = _make_endpoint(dl_db_session, project.id)
+
+    t_old = datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC)
+    t_new = datetime(2024, 6, 1, 0, 0, 0, tzinfo=UTC)
+
+    event1 = _make_event(dl_db_session, project.id)
+    d_pending_new = _make_delivery(dl_db_session, event1, endpoint)
+    d_pending_new.created_at = t_new
+
+    event2 = _make_event(dl_db_session, project.id)
+    d_succeeded_new = _make_delivery(dl_db_session, event2, endpoint)
+    d_succeeded_new.created_at = t_new
+    d_succeeded_new.status = DeliveryStatus.succeeded
+
+    event3 = _make_event(dl_db_session, project.id)
+    d_pending_old = _make_delivery(dl_db_session, event3, endpoint)
+    d_pending_old.created_at = t_old
+    dl_db_session.flush()
+
+    resp = client.get(
+        "/deliveries?status=pending&created_after=2024-03-01T00:00:00Z",
+        headers=_auth(key),
+    )
+    assert resp.status_code == 200
+    ids = {item["id"] for item in resp.json()["items"]}
+    assert str(d_pending_new.id) in ids
+    assert str(d_succeeded_new.id) not in ids
+    assert str(d_pending_old.id) not in ids
+
+
+def test_list_deliveries_created_range_with_pagination(
+    client: TestClient, dl_db_session: Session
+) -> None:
+    project, key = _make_project_and_key(dl_db_session, "project-dl-range-page")
+    endpoint = _make_endpoint(dl_db_session, project.id)
+
+    base = datetime(2024, 6, 1, tzinfo=UTC)
+    deliveries = []
+    for i in range(5):
+        event = _make_event(dl_db_session, project.id)
+        d = _make_delivery(dl_db_session, event, endpoint)
+        d.created_at = base.replace(day=i + 1)
+        deliveries.append(d)
+
+    # one outside the window
+    event_out = _make_event(dl_db_session, project.id)
+    d_out = _make_delivery(dl_db_session, event_out, endpoint)
+    d_out.created_at = datetime(2024, 1, 1, tzinfo=UTC)
+    dl_db_session.flush()
+
+    after = "2024-05-01T00:00:00Z"
+    before = "2024-07-01T00:00:00Z"
+
+    page1 = client.get(
+        f"/deliveries?limit=3&created_after={after}&created_before={before}",
+        headers=_auth(key),
+    ).json()
+    assert len(page1["items"]) == 3
+    cursor = page1["next_cursor"]
+    assert cursor is not None
+
+    page2 = client.get(
+        f"/deliveries?limit=3&cursor={cursor}&created_after={after}&created_before={before}",
+        headers=_auth(key),
+    ).json()
+    assert len(page2["items"]) == 2
+    assert page2["next_cursor"] is None
+
+    all_ids = {item["id"] for item in page1["items"] + page2["items"]}
+    assert str(d_out.id) not in all_ids
+    assert len(all_ids) == 5
+
+
+def test_list_deliveries_created_after_after_created_before_returns_422(
+    client: TestClient, dl_db_session: Session
+) -> None:
+    _, key = _make_project_and_key(dl_db_session, "project-dl-range-invalid")
+    resp = client.get(
+        "/deliveries?created_after=2024-06-01T00:00:00Z&created_before=2024-01-01T00:00:00Z",
+        headers=_auth(key),
+    )
+    assert resp.status_code == 422
+    assert "created_after" in resp.json()["detail"]
+
+
 # ---------------------------------------------------------------------------
 # GET /deliveries/{id} tests
 # ---------------------------------------------------------------------------

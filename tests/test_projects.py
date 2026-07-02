@@ -457,3 +457,97 @@ def test_list_api_keys_key_hash_never_in_response(client: TestClient) -> None:
     raw = json.dumps(resp.json())
     assert "key_hash" not in raw
     assert "hash" not in raw
+
+
+# ---------------------------------------------------------------------------
+# GET /projects
+# ---------------------------------------------------------------------------
+
+
+def test_list_projects_empty_returns_200(client: TestClient) -> None:
+    """Empty list returns 200 with empty items and null next_cursor."""
+    resp = client.get("/projects")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["items"] == []
+    assert data["next_cursor"] is None
+
+
+def test_list_projects_returns_created_project(client: TestClient) -> None:
+    """Single project appears in the list with the correct shape."""
+    client.post("/projects", json={"name": "list-me"})
+    resp = client.get("/projects")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["items"]) == 1
+    item = data["items"][0]
+    assert item["name"] == "list-me"
+    assert set(item.keys()) == {"id", "name", "created_at"}
+
+
+def test_list_projects_no_auth_required(client: TestClient) -> None:
+    resp = client.get("/projects")
+    assert resp.status_code == 200
+
+
+def test_list_projects_limit_zero_returns_422(client: TestClient) -> None:
+    resp = client.get("/projects", params={"limit": 0})
+    assert resp.status_code == 422
+
+
+def test_list_projects_limit_over_max_returns_422(client: TestClient) -> None:
+    resp = client.get("/projects", params={"limit": 101})
+    assert resp.status_code == 422
+
+
+def test_list_projects_single_page_no_cursor(client: TestClient) -> None:
+    """When results fit in one page, next_cursor is None."""
+    for i in range(3):
+        client.post("/projects", json={"name": f"proj-{i}"})
+
+    resp = client.get("/projects", params={"limit": 20})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["items"]) == 3
+    assert data["next_cursor"] is None
+
+
+def test_list_projects_pagination_across_pages(client: TestClient) -> None:
+    """next_cursor pages through all projects without overlap."""
+    for i in range(3):
+        client.post("/projects", json={"name": f"page-proj-{i}"})
+        time.sleep(0.002)
+
+    resp1 = client.get("/projects", params={"limit": 2})
+    assert resp1.status_code == 200
+    page1 = resp1.json()
+    assert len(page1["items"]) == 2
+    assert page1["next_cursor"] is not None
+
+    resp2 = client.get("/projects", params={"limit": 2, "cursor": page1["next_cursor"]})
+    assert resp2.status_code == 200
+    page2 = resp2.json()
+    assert len(page2["items"]) == 1
+    assert page2["next_cursor"] is None
+
+    ids1 = {item["id"] for item in page1["items"]}
+    ids2 = {item["id"] for item in page2["items"]}
+    assert ids1.isdisjoint(ids2)
+
+
+def test_list_projects_ordered_newest_first(client: TestClient) -> None:
+    """Results are ordered created_at DESC."""
+    for i in range(3):
+        client.post("/projects", json={"name": f"order-proj-{i}"})
+        time.sleep(0.002)
+
+    resp = client.get("/projects")
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    names = [item["name"] for item in items]
+    assert names == ["order-proj-2", "order-proj-1", "order-proj-0"]
+
+
+def test_list_projects_invalid_cursor_returns_422(client: TestClient) -> None:
+    resp = client.get("/projects", params={"cursor": "not-a-valid-cursor"})
+    assert resp.status_code == 422

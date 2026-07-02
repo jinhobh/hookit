@@ -48,10 +48,18 @@ def list_deliveries(
     status: DeliveryStatus | None = None,
     endpoint_id: uuid.UUID | None = None,
     event_id: uuid.UUID | None = None,
+    created_after: Annotated[datetime | None, Query()] = None,
+    created_before: Annotated[datetime | None, Query()] = None,
     project: Project = Depends(get_current_project),
     session: Session = Depends(get_session),
 ) -> DeliveryPageResponse:
     """List deliveries for the authenticated project with keyset cursor pagination."""
+    if created_after is not None and created_before is not None and created_after > created_before:
+        raise HTTPException(
+            status_code=422,
+            detail="created_after must not be after created_before",
+        )
+
     stmt = (
         select(Delivery)
         .join(Endpoint, Delivery.endpoint_id == Endpoint.id)
@@ -66,6 +74,12 @@ def list_deliveries(
 
     if event_id is not None:
         stmt = stmt.where(Delivery.event_id == event_id)
+
+    if created_after is not None:
+        stmt = stmt.where(Delivery.created_at >= created_after)
+
+    if created_before is not None:
+        stmt = stmt.where(Delivery.created_at <= created_before)
 
     if cursor is not None:
         cursor_created_at, cursor_id = _decode_cursor(cursor)
