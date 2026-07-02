@@ -25,6 +25,7 @@ from app.schemas.project import (
     ApiKeyListItem,
     ApiKeyPageResponse,
     ProjectCreate,
+    ProjectPageResponse,
     ProjectResponse,
 )
 from app.services.api_keys import revoke_api_key
@@ -56,6 +57,45 @@ def create_project(
     session.commit()
     session.refresh(project)
     return ProjectResponse.model_validate(project)
+
+
+@router.get("", response_model=ProjectPageResponse)
+def list_projects(
+    limit: Annotated[int, Query(ge=1, le=_MAX_LIMIT)] = _DEFAULT_LIMIT,
+    cursor: str | None = None,
+    session: Session = Depends(get_session),
+) -> ProjectPageResponse:
+    """List all projects with keyset cursor pagination, ordered newest first.
+
+    Admin/bootstrap endpoint — no authentication required in the MVP.
+    """
+    stmt = select(Project)
+
+    if cursor is not None:
+        cursor_created_at, cursor_id = _decode_cursor(cursor)
+        stmt = stmt.where(
+            or_(
+                Project.created_at < cursor_created_at,
+                and_(
+                    Project.created_at == cursor_created_at,
+                    Project.id < cursor_id,
+                ),
+            )
+        )
+
+    stmt = stmt.order_by(Project.created_at.desc(), Project.id.desc()).limit(limit + 1)
+    rows = list(session.execute(stmt).scalars())
+
+    has_next = len(rows) > limit
+    page = rows[:limit]
+
+    next_cursor: str | None = None
+    if has_next and page:
+        last = page[-1]
+        next_cursor = _encode_cursor(last.created_at, last.id)
+
+    items = [ProjectResponse.model_validate(p) for p in page]
+    return ProjectPageResponse(items=items, next_cursor=next_cursor)
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)

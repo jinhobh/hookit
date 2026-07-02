@@ -66,3 +66,10 @@ class ApiKeyPageResponse(BaseModel):
 
     items: list[ApiKeyListItem]
     next_cursor: str | None = None
+
+
+class ProjectPageResponse(BaseModel):
+    """Paginated response for GET /projects."""
+
+    items: list[ProjectResponse]
+    next_cursor: str | None = None
