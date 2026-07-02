@@ -6,11 +6,17 @@ with no API key while no real customer data is ever exposed:
 
 - ``GET  /showcase/summary``     — delivery health metrics for the showcase project.
 - ``GET  /showcase/feed``        — the live producer event feed + receiver inbox/health.
+- ``GET  /showcase/deliveries``  — the receiver's recent deliveries with their full
+  attempt history, lease state, and the live retry configuration (the dashboard's
+  delivery lifecycle timeline).
 - ``POST /showcase/health``      — take the controllable receiver up or down.
 - ``POST /showcase/dead-letter`` — fast-forward one delivery to the DLQ (receiver
   must be down) so redrive recovery is watchable without a ~5 min backoff wait.
 - ``POST /showcase/redrive``     — redrive a dead-lettered delivery back to pending.
 - ``POST /showcase/burst``       — proxy a load-spike request to the producer.
+- ``POST /showcase/duplicate``   — proxy to the producer: fire the same payload
+  twice concurrently with one ``Idempotency-Key`` (a real race on the ingestion
+  unique constraint) and return both responses.
 
 Plus the public ``POST /showcase/receiver/{endpoint_id}`` — the controllable
 receiver those tick deliveries are sent to.
@@ -37,6 +43,8 @@ from app.schemas.metrics import MetricsSummaryResponse
 from app.schemas.showcase import (
     BurstResponse,
     DeadLetterResponse,
+    DeliveriesResponse,
+    DuplicateResponse,
     FeedEventItem,
     FeedResponse,
     HealthRequest,
@@ -44,6 +52,9 @@ from app.schemas.showcase import (
     ReceivedRequestItem,
     RedriveRequest,
     RedriveResponse,
+    TimelineAttemptItem,
+    TimelineDeliveryItem,
+    WorkerStat,
 )
 from app.services.crypto import decrypt_secret
 from app.services.metrics import delivery_summary
@@ -55,6 +66,7 @@ from app.services.showcase import (
     get_scoped_delivery,
     latest_dead_lettered_id,
     list_inbox,
+    list_recent_deliveries,
     list_recent_events,
     record_received_request,
     resolve_showcase,
@@ -118,6 +130,56 @@ def feed(
         discord_widget_channel_id=settings.discord_widget_channel_id or None,
         events=events,
         inbox=inbox,
+    )
+
+
+@router.get("/deliveries", response_model=DeliveriesResponse)
+def deliveries(
+    handles: ShowcaseHandles = Depends(get_showcase),
+    session: Session = Depends(get_session),
+) -> DeliveriesResponse:
+    """Return the receiver's recent deliveries with attempts + retry config.
+
+    Public read backing the dashboard's delivery lifecycle timeline: real
+    ``Delivery`` / ``DeliveryAttempt`` rows written by the production worker,
+    plus the live retry settings and server clock so measured backoff gaps can
+    be compared against the nominal ``min(base·2^(n−1), cap)`` schedule.
+    """
+    settings = get_settings()
+    items = [
+        TimelineDeliveryItem(
+            id=d.id,
+            event_id=d.event_id,
+            event_type=d.event.type,
+            status=d.status.value,
+            attempt_count=d.attempt_count,
+            next_attempt_at=d.next_attempt_at,
+            leased_until=d.leased_until,
+            claimed_by=d.claimed_by,
+            created_at=d.created_at,
+            attempts=[TimelineAttemptItem.model_validate(a) for a in d.attempts],
+        )
+        for d in list_recent_deliveries(session, handles.receiver_endpoint_id)
+    ]
+    attempts_by_worker: dict[str, int] = {}
+    for item in items:
+        for attempt in item.attempts:
+            if attempt.worker_id is not None:
+                attempts_by_worker[attempt.worker_id] = (
+                    attempts_by_worker.get(attempt.worker_id, 0) + 1
+                )
+    workers = [
+        WorkerStat(name=name, attempts=count)
+        for name, count in sorted(attempts_by_worker.items(), key=lambda kv: (-kv[1], kv[0]))
+    ]
+    return DeliveriesResponse(
+        server_time=datetime.now(UTC),
+        retry_base_seconds=settings.retry_base_seconds,
+        retry_cap_seconds=settings.retry_cap_seconds,
+        max_delivery_attempts=settings.max_delivery_attempts,
+        receiver_endpoint_id=handles.receiver_endpoint_id,
+        workers=workers,
+        deliveries=items,
     )
 
 
@@ -207,6 +269,27 @@ def burst() -> BurstResponse:
     except (httpx.HTTPError, ValueError, TypeError):
         published = 0
     return BurstResponse(published=published)
+
+
+@router.post("/duplicate", response_model=DuplicateResponse)
+def duplicate() -> DuplicateResponse:
+    """Proxy an idempotency-race request to the producer's control server.
+
+    The producer fires the same payload twice **concurrently** with one
+    ``Idempotency-Key``; both responses come back so the dashboard can show
+    they carry the same ``event_id`` and only one delivery was created.
+    Returns empty ``results`` if the producer is unreachable, mirroring
+    ``POST /showcase/burst``.
+    """
+    settings = get_settings()
+    url = f"{settings.producer_base_url.rstrip('/')}/duplicate"
+    try:
+        with httpx.Client(timeout=settings.delivery_timeout_seconds) as client:
+            resp = client.post(url)
+            resp.raise_for_status()
+            return DuplicateResponse.model_validate(resp.json())
+    except (httpx.HTTPError, ValueError):
+        return DuplicateResponse()
 
 
 @router.post("/receiver/{endpoint_id}")

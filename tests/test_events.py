@@ -291,6 +291,96 @@ def test_idempotency_savepoint_recovers_on_concurrent_insert(
     assert second_data["event_id"] == first_data["event_id"]
     assert second_data["queued_deliveries"] == first_data["queued_deliveries"]
 
+    # And the loser's rolled-back inserts must leave no rows behind — an
+    # autoflushed Event once escaped the savepoint and leaked as an orphan.
+    from app.models.delivery import Delivery
+    from app.models.event import Event
+    from sqlalchemy import func, select
+
+    project, _ = project_with_endpoint
+    event_count = ev_db_session.execute(
+        select(func.count()).select_from(Event).where(Event.project_id == project.id)
+    ).scalar_one()
+    delivery_count = ev_db_session.execute(
+        select(func.count())
+        .select_from(Delivery)
+        .join(Event, Delivery.event_id == Event.id)
+        .where(Event.project_id == project.id)
+    ).scalar_one()
+    assert event_count == 1
+    assert delivery_count == 1
+
+
+def test_idempotency_genuine_concurrent_race_yields_one_event(db_engine: Engine) -> None:
+    """Two truly concurrent POST /events with one Idempotency-Key create one event.
+
+    Unlike the savepoint test above (which forces the loser's code path), this
+    fires two real requests from two threads through real committed sessions —
+    the same shape as the showcase's producer-driven "Publish duplicate" demo.
+    Whichever interleaving occurs, both callers must get the same event_id and
+    exactly one event/delivery may exist afterwards.
+    """
+    import threading
+    import uuid as _uuid
+
+    from app.models.delivery import Delivery
+    from app.models.event import Event
+    from sqlalchemy import delete, func, select
+
+    Base.metadata.create_all(db_engine)
+    project_name = f"idem-race-{_uuid.uuid4().hex[:10]}"
+
+    with Session(db_engine) as setup:
+        project, key = _make_project_and_key(setup, project_name)
+        _make_endpoint(setup, project.id, ["order.created"])
+        setup.commit()
+        project_id = project.id
+
+    barrier = threading.Barrier(2)
+    results: list[tuple[int, dict[str, object]]] = []
+    lock = threading.Lock()
+
+    def fire() -> None:
+        with TestClient(app) as thread_client:
+            barrier.wait(timeout=10)
+            resp = thread_client.post(
+                "/events",
+                json=_VALID_BODY,
+                headers={**_auth(key), "Idempotency-Key": "genuine-race-key"},
+            )
+            with lock:
+                results.append((resp.status_code, resp.json()))
+
+    threads = [threading.Thread(target=fire) for _ in range(2)]
+    try:
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=30)
+
+        assert len(results) == 2
+        assert all(status == 201 for status, _ in results)
+        first, second = results[0][1], results[1][1]
+        assert first["event_id"] == second["event_id"]
+        assert first["queued_deliveries"] == second["queued_deliveries"] == 1
+
+        with Session(db_engine) as check:
+            event_count = check.execute(
+                select(func.count()).select_from(Event).where(Event.project_id == project_id)
+            ).scalar_one()
+            delivery_count = check.execute(
+                select(func.count())
+                .select_from(Delivery)
+                .join(Event, Delivery.event_id == Event.id)
+                .where(Event.project_id == project_id)
+            ).scalar_one()
+            assert event_count == 1
+            assert delivery_count == 1
+    finally:
+        with Session(db_engine) as cleanup:
+            cleanup.execute(delete(Project).where(Project.name == project_name))
+            cleanup.commit()
+
 
 # ---------------------------------------------------------------------------
 # Idempotency — conflict (same key + different body → 409)

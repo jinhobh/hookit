@@ -31,6 +31,7 @@ from app.worker.delivery_worker import (
     sleep_for_rate_limit,
 )
 from app.worker.signing import build_signature_header, sign_payload, verify_signature
+from sqlalchemy import select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
@@ -273,6 +274,74 @@ def test_claim_sets_leased_until(wk_db_session: Session) -> None:
     assert claimed[0].leased_until > after
 
 
+def test_claim_stamps_claimed_by(wk_db_session: Session) -> None:
+    project = _make_project(wk_db_session, "claim-stamps-worker")
+    ep = _make_endpoint(wk_db_session, project.id, "secret-claimed-by")
+    event = _make_event(wk_db_session, project.id)
+    _make_delivery(wk_db_session, event, ep)
+
+    claimed = claim_due_deliveries(wk_db_session, worker_name="worker-a")
+
+    assert len(claimed) == 1
+    assert claimed[0].claimed_by == "worker-a"
+
+
+def test_concurrent_sessions_claim_disjoint_sets(db_engine: Engine) -> None:
+    """Two real sessions claiming at once get disjoint deliveries via SKIP LOCKED.
+
+    Uses independent committed sessions (not the savepoint fixture) because the
+    race is between two database connections: while session A holds its row
+    locks in an open transaction, session B's FOR UPDATE SKIP LOCKED claim must
+    skip A's rows instead of blocking or double-claiming.
+    """
+    import uuid as _uuid
+
+    Base.metadata.create_all(db_engine)
+    project_name = f"claim-race-{_uuid.uuid4().hex[:10]}"
+
+    with Session(db_engine) as setup:
+        project = _make_project(setup, project_name)
+        ep = _make_endpoint(setup, project.id, "secret-race")
+        due = datetime.now(UTC) - timedelta(days=1)  # sorts first among due rows
+        our_ids = set()
+        for _ in range(6):
+            event = _make_event(setup, project.id)
+            delivery = _make_delivery(setup, event, ep, next_attempt_at=due)
+            our_ids.add(delivery.id)
+        setup.commit()
+
+    try:
+        with Session(db_engine) as s1, Session(db_engine) as s2:
+            claimed_1 = claim_due_deliveries(s1, batch_size=3, worker_name="w1")
+            # s1's transaction is still open and holds its row locks here.
+            claimed_2 = claim_due_deliveries(s2, batch_size=3, worker_name="w2")
+
+            ids_1 = {d.id for d in claimed_1}
+            ids_2 = {d.id for d in claimed_2}
+            assert len(ids_1) == 3 and len(ids_2) == 3
+            assert ids_1.isdisjoint(ids_2)
+            assert all(d.claimed_by == "w1" for d in claimed_1)
+            assert all(d.claimed_by == "w2" for d in claimed_2)
+
+            s1.commit()
+            s2.commit()
+
+        # The stamps survive the commits and cover all six of our deliveries.
+        with Session(db_engine) as check:
+            rows = check.execute(
+                select(Delivery.id, Delivery.claimed_by).where(Delivery.id.in_(our_ids))
+            ).all()
+            assert {row.id for row in rows} == our_ids
+            assert {row.claimed_by for row in rows} == {"w1", "w2"}
+    finally:
+        with Session(db_engine) as cleanup:
+            project_row = cleanup.execute(
+                select(Project).where(Project.name == project_name)
+            ).scalar_one()
+            cleanup.delete(project_row)
+            cleanup.commit()
+
+
 # ---------------------------------------------------------------------------
 # Integration tests: process_delivery
 # ---------------------------------------------------------------------------
@@ -334,6 +403,22 @@ def test_process_delivery_writes_attempt_record(wk_db_session: Session) -> None:
     assert attempt.response_status == 200
     assert attempt.duration_ms is not None
     assert attempt.error is None
+
+
+def test_process_delivery_stamps_worker_id_on_attempt(wk_db_session: Session) -> None:
+    project = _make_project(wk_db_session, "process-worker-id")
+    ep = _make_endpoint(wk_db_session, project.id, "secret-worker-id")
+    event = _make_event(wk_db_session, project.id)
+    delivery = _make_delivery(wk_db_session, event, ep)
+    delivery.status = DeliveryStatus.in_flight
+    wk_db_session.flush()
+
+    transport = _MockTransport(status_code=200)
+    with httpx.Client(transport=transport) as client:
+        process_delivery(delivery, wk_db_session, client, worker_name="w-9")
+
+    wk_db_session.expire(delivery)
+    assert delivery.attempts[0].worker_id == "w-9"
 
 
 def test_process_delivery_network_error_writes_attempt_and_schedules_retry(

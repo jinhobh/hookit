@@ -74,15 +74,10 @@ def ingest_event(
     # Pre-generate UUID so Delivery rows reference it without an early flush.
     event_id = uuid.uuid4()
 
-    event = Event(
-        id=event_id,
-        project_id=project_id,
-        type=event_type,
-        payload=payload,
-        idempotency_key=idempotency_key,
-    )
-    session.add(event)
-
+    # Query the fan-out targets *before* adding any pending objects: this SELECT
+    # autoflushes, and an autoflushed Event would land in the outer transaction,
+    # escape the savepoint below, and survive its rollback as an orphan row when
+    # a concurrent request wins the idempotency race.
     active_endpoints = list(
         session.execute(
             select(Endpoint).where(
@@ -93,6 +88,13 @@ def ingest_event(
         ).scalars()
     )
 
+    event = Event(
+        id=event_id,
+        project_id=project_id,
+        type=event_type,
+        payload=payload,
+        idempotency_key=idempotency_key,
+    )
     deliveries = [
         Delivery(
             event_id=event_id,
@@ -103,29 +105,33 @@ def ingest_event(
         )
         for ep in active_endpoints
     ]
-    session.add_all(deliveries)
-
     queued_count = len(deliveries)
 
     if idempotency_key is not None:
-        # Savepoint wraps all three inserts.  If a concurrent request already
-        # committed the same (project_id, idempotency_key), the unique constraint
-        # raises IntegrityError.  Rolling back to the savepoint keeps the outer
-        # transaction alive so we can re-read the winning record and return it.
+        # The savepoint must wrap all three inserts.  ``begin_nested()`` flushes
+        # any *already-pending* objects to the outer transaction before emitting
+        # SAVEPOINT, so the objects are added only after it opens — otherwise a
+        # losing racer's Event/Delivery rows would escape the rollback and be
+        # committed as an orphan event plus a duplicate delivery.
         nested = session.begin_nested()
         try:
-            record = IdempotencyRecord(
-                project_id=project_id,
-                idempotency_key=idempotency_key,
-                event_id=event_id,
-                queued_deliveries=queued_count,
-                request_hash=request_hash,
+            session.add(event)
+            session.add_all(deliveries)
+            session.add(
+                IdempotencyRecord(
+                    project_id=project_id,
+                    idempotency_key=idempotency_key,
+                    event_id=event_id,
+                    queued_deliveries=queued_count,
+                    request_hash=request_hash,
+                )
             )
-            session.add(record)
             nested.commit()  # flush Event + Deliveries + IdempotencyRecord; release savepoint
         except IntegrityError:
-            # Only uq_idempotency_records_project_key can fire here; FK constraints
-            # reference rows already committed before this savepoint opened.
+            # A concurrent request already committed the same
+            # (project_id, idempotency_key): only uq_idempotency_records_project_key
+            # can fire here; FK constraints reference rows committed before this
+            # savepoint opened.
             nested.rollback()  # undo all three inserts; outer transaction stays alive
             existing = session.execute(
                 select(IdempotencyRecord).where(
@@ -140,6 +146,8 @@ def ingest_event(
                 ) from None
             return existing.event_id, existing.queued_deliveries
     else:
+        session.add(event)
+        session.add_all(deliveries)
         session.flush()
 
     if queued_count > 0:

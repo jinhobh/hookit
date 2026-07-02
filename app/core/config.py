@@ -91,6 +91,24 @@ class Settings(BaseSettings):
         default=60,
         description="Lease duration in seconds before a crashed worker's claims expire.",
     )
+    worker_name: str = Field(
+        default="",
+        description=(
+            "Stable name identifying this worker process in claim/attempt "
+            "attribution (deliveries.claimed_by, delivery_attempts.worker_id). "
+            "Empty means derive '<hostname>:<pid>' at runtime."
+        ),
+    )
+    worker_concurrency: int = Field(
+        default=1,
+        ge=1,
+        le=32,
+        description=(
+            "Independent claim loops the worker entrypoint runs in one process, "
+            "each with its own DB session and worker name — exercising "
+            "FOR UPDATE SKIP LOCKED across real concurrent sessions."
+        ),
+    )
     worker_listen_channel: str = Field(
         default="new_delivery",
         description="PostgreSQL LISTEN/NOTIFY channel name for worker wake-up.",

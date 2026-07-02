@@ -328,6 +328,68 @@ def test_receiver_200_when_healthy_503_when_down(isolated_showcase: str, db_engi
         assert down.status_code == 503
 
 
+def test_deliveries_empty_returns_retry_config(isolated_showcase: str, db_engine: Engine) -> None:
+    with TestClient(app) as client:
+        resp = client.get("/showcase/deliveries")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["deliveries"] == []
+        assert data["retry_base_seconds"] > 0
+        assert data["retry_cap_seconds"] >= data["retry_base_seconds"]
+        assert data["max_delivery_attempts"] >= 1
+        assert data["server_time"] is not None
+    # The advertised receiver id is the seeded one (the forged-request target).
+    _, endpoint_id, _ = _receiver(db_engine)
+    assert data["receiver_endpoint_id"] == str(endpoint_id)
+
+
+def test_deliveries_shows_full_attempt_history(isolated_showcase: str, db_engine: Engine) -> None:
+    """After a forced dead-letter, the timeline exposes every real attempt."""
+    with TestClient(app, raise_server_exceptions=True) as inner_client:
+
+        def _override_http_client() -> Generator[httpx.Client, None, None]:
+            yield inner_client
+
+        app.dependency_overrides[get_simulate_http_client] = _override_http_client
+        try:
+            with TestClient(app) as client:
+                client.get("/showcase/feed")  # trigger seeding
+                client.post("/showcase/health", json={"healthy": False})
+                assert client.post("/showcase/dead-letter").json()["delivery_id"] is not None
+
+                data = client.get("/showcase/deliveries").json()
+        finally:
+            app.dependency_overrides.pop(get_simulate_http_client, None)
+
+    assert len(data["deliveries"]) == 1
+    delivery = data["deliveries"][0]
+    max_attempts = data["max_delivery_attempts"]
+    assert delivery["status"] == "dead_lettered"
+    assert delivery["event_type"] == "price.tick"
+    assert delivery["attempt_count"] == max_attempts
+    assert [a["attempt_number"] for a in delivery["attempts"]] == list(range(1, max_attempts + 1))
+    # Every attempt hit the downed receiver for real: 503, with a measured duration.
+    assert all(a["response_status"] == 503 for a in delivery["attempts"])
+    assert all(a["duration_ms"] is not None for a in delivery["attempts"])
+
+
+def test_duplicate_returns_empty_when_producer_unreachable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The proxy degrades gracefully (empty results) when the producer is down."""
+    monkeypatch.setenv("PRODUCER_BASE_URL", "http://127.0.0.1:9")  # discard port: closed
+    get_settings.cache_clear()
+    try:
+        with TestClient(app) as client:
+            resp = client.post("/showcase/duplicate")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["idempotency_key"] is None
+            assert data["results"] == []
+    finally:
+        get_settings.cache_clear()
+
+
 def test_dead_letter_requires_pipeline_down(isolated_showcase: str) -> None:
     with TestClient(app) as client:
         # Healthy by default → refuses to fabricate a dead-letter.

@@ -60,6 +60,58 @@ class FeedResponse(BaseModel):
     inbox: list[ReceivedRequestItem]
 
 
+class TimelineAttemptItem(BaseModel):
+    """One recorded HTTP attempt on a showcase delivery."""
+
+    attempt_number: int
+    response_status: int | None = None
+    error: str | None = None
+    duration_ms: int | None = None
+    worker_id: str | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TimelineDeliveryItem(BaseModel):
+    """One recent delivery to the controllable receiver, with its attempt history."""
+
+    id: uuid.UUID
+    event_id: uuid.UUID
+    event_type: str
+    status: str
+    attempt_count: int
+    next_attempt_at: datetime
+    leased_until: datetime | None = None
+    claimed_by: str | None = None
+    created_at: datetime
+    attempts: list[TimelineAttemptItem]
+
+
+class WorkerStat(BaseModel):
+    """Per-worker attempt count over the deliveries in the timeline window."""
+
+    name: str
+    attempts: int
+
+
+class DeliveriesResponse(BaseModel):
+    """Returned by GET /showcase/deliveries — the delivery lifecycle timeline.
+
+    Carries the live retry configuration and the server clock so the dashboard
+    can annotate each measured gap with the nominal backoff formula
+    ``min(base·2^(n−1), cap)`` and run drift-free countdowns.
+    """
+
+    server_time: datetime
+    retry_base_seconds: float
+    retry_cap_seconds: float
+    max_delivery_attempts: int
+    receiver_endpoint_id: uuid.UUID
+    workers: list[WorkerStat]
+    deliveries: list[TimelineDeliveryItem]
+
+
 class DeadLetterResponse(BaseModel):
     """Returned by POST /showcase/dead-letter."""
 
@@ -84,3 +136,23 @@ class BurstResponse(BaseModel):
     """Returned by POST /showcase/burst."""
 
     published: int
+
+
+class DuplicateResult(BaseModel):
+    """One of the two racing POST /events responses from the duplicate demo."""
+
+    status: int
+    event_id: uuid.UUID | None = None
+    queued_deliveries: int | None = None
+
+
+class DuplicateResponse(BaseModel):
+    """Returned by POST /showcase/duplicate.
+
+    Both results carrying the same ``event_id`` (with one delivery created, not
+    two) is the demonstrated guarantee. Empty ``results`` means the producer was
+    unreachable.
+    """
+
+    idempotency_key: str | None = None
+    results: list[DuplicateResult] = []
