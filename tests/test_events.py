@@ -597,3 +597,36 @@ def test_publish_event_oversized_payload_returns_422(client: TestClient, project
         headers=_auth(project_key),
     )
     assert resp.status_code == 422
+
+
+def test_publish_event_reserved_simulate_prefix_returns_422(
+    client: TestClient, project_key: str
+) -> None:
+    resp = client.post(
+        "/events",
+        json={"type": "__simulate__", "payload": {}},
+        headers=_auth(project_key),
+    )
+    assert resp.status_code == 422
+
+
+def test_publish_event_any_reserved_prefix_returns_422(
+    client: TestClient, project_key: str
+) -> None:
+    resp = client.post(
+        "/events",
+        json={"type": "__anything", "payload": {}},
+        headers=_auth(project_key),
+    )
+    assert resp.status_code == 422
+
+
+def test_publish_event_normal_type_not_affected_by_reserved_check(
+    client: TestClient, project_key: str
+) -> None:
+    resp = client.post(
+        "/events",
+        json={"type": "order.paid", "payload": {}},
+        headers=_auth(project_key),
+    )
+    assert resp.status_code == 201
