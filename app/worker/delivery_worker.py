@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import socket
 import time
 from datetime import UTC, datetime, timedelta
 
@@ -29,15 +31,31 @@ from app.worker.signing import build_signature_header
 logger = logging.getLogger(__name__)
 
 
-def claim_due_deliveries(session: Session, batch_size: int | None = None) -> list[Delivery]:
+def default_worker_name() -> str:
+    """Return this process's default worker name: ``<hostname>:<pid>``."""
+    return f"{socket.gethostname()}:{os.getpid()}"
+
+
+def _resolve_worker_name(worker_name: str | None) -> str:
+    """Resolve the effective worker name: explicit arg → settings → hostname:pid."""
+    return worker_name or get_settings().worker_name or default_worker_name()
+
+
+def claim_due_deliveries(
+    session: Session,
+    batch_size: int | None = None,
+    worker_name: str | None = None,
+) -> list[Delivery]:
     """Claim up to *batch_size* pending, due deliveries with FOR UPDATE SKIP LOCKED.
 
-    Each claimed delivery transitions from PENDING → IN_FLIGHT and receives a
-    time-bounded lease.  Concurrent workers skip locked rows rather than block.
+    Each claimed delivery transitions from PENDING → IN_FLIGHT, receives a
+    time-bounded lease, and is stamped with the claiming worker's name.
+    Concurrent workers skip locked rows rather than block.
     """
     settings = get_settings()
     if batch_size is None:
         batch_size = settings.worker_batch_size
+    claimer = _resolve_worker_name(worker_name)
     now = datetime.now(UTC)
     lease_until = now + timedelta(seconds=settings.worker_lease_seconds)
 
@@ -63,6 +81,7 @@ def claim_due_deliveries(session: Session, batch_size: int | None = None) -> lis
     for delivery in rows:
         delivery.status = DeliveryStatus.in_flight
         delivery.leased_until = lease_until
+        delivery.claimed_by = claimer
 
     if rows:
         session.flush()
@@ -88,16 +107,19 @@ def process_delivery(
     delivery: Delivery,
     session: Session,
     http_client: httpx.Client,
+    worker_name: str | None = None,
 ) -> None:
     """POST the signed event payload to the endpoint and record the attempt.
 
     On 2xx response → SUCCEEDED.  On failure, schedules a retry (PENDING with
     next_attempt_at via exponential backoff) if under the attempt limit, or
-    transitions to DEAD_LETTERED when the limit is reached.
+    transitions to DEAD_LETTERED when the limit is reached.  Each attempt row is
+    stamped with the processing worker's name.
     """
     settings = get_settings()
     endpoint: Endpoint = delivery.endpoint
     event: Event = delivery.event
+    worker = _resolve_worker_name(worker_name)
 
     secret = decrypt_secret(endpoint.secret_enc)
 
@@ -124,6 +146,7 @@ def process_delivery(
                 response_body=None,
                 error=str(exc),
                 duration_ms=0,
+                worker_id=worker,
             )
         )
         delivery.attempt_count = attempt_number
@@ -167,6 +190,7 @@ def process_delivery(
             response_body=response_body,
             error=error,
             duration_ms=duration_ms,
+            worker_id=worker,
         )
     )
 
@@ -226,10 +250,10 @@ def sleep_for_rate_limit(rate_limit_rps: float | None) -> None:
         time.sleep(1.0 / rate_limit_rps)
 
 
-def run_once(session: Session, http_client: httpx.Client) -> int:
+def run_once(session: Session, http_client: httpx.Client, worker_name: str | None = None) -> int:
     """Claim and process one batch of due deliveries.  Returns the number processed."""
     _recover_expired_leases(session)
-    deliveries = claim_due_deliveries(session)
+    deliveries = claim_due_deliveries(session, worker_name=worker_name)
     DELIVERIES_CLAIMED_TOTAL.inc(len(deliveries))
     seen_endpoint_ids: set[object] = set()
     for delivery in deliveries:
@@ -238,5 +262,5 @@ def run_once(session: Session, http_client: httpx.Client) -> int:
             sleep_for_rate_limit(delivery.endpoint.rate_limit_rps)
         else:
             seen_endpoint_ids.add(endpoint_id)
-        process_delivery(delivery, session, http_client)
+        process_delivery(delivery, session, http_client, worker_name=worker_name)
     return len(deliveries)

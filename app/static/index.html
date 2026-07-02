@@ -127,6 +127,14 @@
       .discord iframe { width: 100%; height: 560px; border: 0; display: block; }
       .discord .msg { padding: 40px 24px; }
 
+      /* Workers strip */
+      .workers { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 0 0 10px 2px; }
+      .worker-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; font-size: 12px; background: var(--panel); font-family: ui-monospace, Menlo, monospace; }
+      .worker-chip .n { color: var(--muted); }
+      .wdot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+      .workers .note { color: var(--muted); font-size: 11.5px; margin-left: 4px; }
+      .workers .note code { font-size: 11px; }
+
       /* Delivery lifecycle timeline */
       .lifecycle { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 22px; }
       .dl-item { border-bottom: 1px solid var(--border); padding: 10px 14px; }
@@ -220,6 +228,7 @@
       </div>
 
       <p class="section-title">Delivery lifecycle · every attempt, backoff gap, and lease — straight from the engine's own rows</p>
+      <div id="workers-strip" class="workers" hidden></div>
       <div id="lifecycle-wrap" class="lifecycle">
         <p class="msg">Recent deliveries to your pipeline appear here with their full retry history.</p>
       </div>
@@ -406,6 +415,26 @@
 
       // ---- rendering: delivery lifecycle timeline -------------------------
       function serverNow() { return Date.now() + serverDelta; }
+      function workerColor(name) {
+        // Stable name → hue so each claim loop keeps its color across renders.
+        let h = 0;
+        for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+        return `hsl(${h % 360} 65% 62%)`;
+      }
+      function workerDot(name) {
+        if (!name) return "";
+        const short = esc(name.split(":").pop());
+        return `<span class="wdot" style="background:${workerColor(name)}" title="${esc(name)}"></span><span class="num" title="${esc(name)}">${short}</span>`;
+      }
+      function renderWorkers(workers) {
+        const strip = $("workers-strip");
+        if (!workers.length) { strip.hidden = true; return; }
+        strip.hidden = false;
+        strip.innerHTML = workers.map((w) =>
+          `<span class="worker-chip"><span class="wdot" style="background:${workerColor(w.name)}"></span>${esc(w.name)}<span class="n">· ${w.attempts} attempt${w.attempts === 1 ? "" : "s"}</span></span>`
+        ).join("") +
+          `<span class="note">0 duplicate attempts — enforced by <code>UNIQUE(delivery_id, attempt_number)</code></span>`;
+      }
       function fmtSecs(ms) { return (ms / 1000).toFixed(1) + "s"; }
       function nominalDelay(attemptNumber, cfg) {
         // Mirrors app/worker/backoff.py: min(base * 2^(n-1), cap), before jitter.
@@ -434,6 +463,7 @@
           rows += `<div class="tl-attempt"><span class="num">#${a.attempt_number}</span>` +
             attemptLabel(a) +
             (a.duration_ms != null ? `<span class="dur">${a.duration_ms} ms</span>` : "") +
+            workerDot(a.worker_id) +
             `<span class="when">${fmtTime(a.created_at)}</span></div>`;
           const next = d.attempts[i + 1];
           if (next) {
@@ -454,11 +484,13 @@
           `<span class="badge ${esc(d.status)}">${esc(d.status.replace("_", " "))}</span>` +
           `<span class="evt">${esc(d.event_type)}</span>` +
           `<span class="att">attempt ${d.attempt_count}/${cfg.max_delivery_attempts}</span>` +
+          (d.status === "in_flight" ? workerDot(d.claimed_by) : "") +
           countdown +
           `</div>` + (rows ? `<div class="tl">${rows}</div>` : "") + `</div>`;
       }
       function renderLifecycle() {
         if (!lifecycle) return;
+        renderWorkers(lifecycle.workers);
         $("lifecycle-wrap").innerHTML = lifecycle.deliveries.length
           ? lifecycle.deliveries.map((d) => deliveryRow(d, lifecycle)).join("")
           : `<p class="msg">No deliveries yet — they appear here the moment the producer's next tick fans out.</p>`;

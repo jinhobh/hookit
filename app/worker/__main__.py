@@ -1,12 +1,18 @@
 """Delivery worker entrypoint.
 
 Start with:  python -m app.worker
+
+Runs ``WORKER_CONCURRENCY`` independent claim loops in one process (default 1).
+Each loop has its own name (``<worker_name>#<i>``), its own LISTEN connection,
+and opens its own DB session per tick — so concurrent claiming exercises
+``FOR UPDATE SKIP LOCKED`` across real sessions without extra machines.
 """
 
 from __future__ import annotations
 
 import contextlib
 import logging
+import threading
 import time
 from typing import Any
 
@@ -15,7 +21,7 @@ import psycopg
 
 from app.core.config import Settings, get_settings
 from app.db.session import SessionLocal
-from app.worker.delivery_worker import run_once
+from app.worker.delivery_worker import default_worker_name, run_once
 
 logging.basicConfig(
     level=logging.INFO,
@@ -42,9 +48,9 @@ def _wait_for_notify(conn: psycopg.Connection[Any], timeout: float) -> None:
         break
 
 
-def main() -> None:
-    settings = get_settings()
-    logger.info("Delivery worker starting")
+def _worker_loop(settings: Settings, worker_name: str) -> None:
+    """One independent claim loop: own LISTEN connection, own session per tick."""
+    logger.info("Delivery worker loop starting worker_name=%s", worker_name)
     listen_conn: psycopg.Connection[Any] | None = None
     with httpx.Client() as http_client:
         while True:
@@ -52,7 +58,11 @@ def main() -> None:
             if listen_conn is None:
                 try:
                     listen_conn = _open_listen_conn(settings)
-                    logger.info("LISTEN established on channel %r", settings.worker_listen_channel)
+                    logger.info(
+                        "LISTEN established on channel %r worker_name=%s",
+                        settings.worker_listen_channel,
+                        worker_name,
+                    )
                 except Exception:
                     logger.warning(
                         "Could not open LISTEN connection; falling back to polling",
@@ -63,13 +73,13 @@ def main() -> None:
             n = 0
             session = SessionLocal()
             try:
-                n = run_once(session, http_client)
+                n = run_once(session, http_client, worker_name=worker_name)
                 session.commit()
                 if n:
-                    logger.info("Processed %d delivery/deliveries", n)
+                    logger.info("Processed %d delivery/deliveries worker_name=%s", n, worker_name)
             except Exception:
                 session.rollback()
-                logger.exception("Worker loop error")
+                logger.exception("Worker loop error worker_name=%s", worker_name)
             finally:
                 session.close()
 
@@ -86,6 +96,27 @@ def main() -> None:
                         time.sleep(1)
                 else:
                     time.sleep(settings.worker_fallback_poll_seconds)
+
+
+def main() -> None:
+    settings = get_settings()
+    base_name = settings.worker_name or default_worker_name()
+    concurrency = settings.worker_concurrency
+    logger.info("Delivery worker starting: %d claim loop(s), base name %s", concurrency, base_name)
+
+    if concurrency == 1:
+        _worker_loop(settings, base_name)
+        return
+
+    names = [f"{base_name}#{i + 1}" for i in range(concurrency)]
+    threads = [
+        threading.Thread(target=_worker_loop, args=(settings, name), name=name, daemon=True)
+        for name in names[1:]
+    ]
+    for thread in threads:
+        thread.start()
+    # Run the first loop on the main thread so the process lives with its loops.
+    _worker_loop(settings, names[0])
 
 
 if __name__ == "__main__":

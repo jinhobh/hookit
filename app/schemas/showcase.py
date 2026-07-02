@@ -67,6 +67,7 @@ class TimelineAttemptItem(BaseModel):
     response_status: int | None = None
     error: str | None = None
     duration_ms: int | None = None
+    worker_id: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -82,8 +83,16 @@ class TimelineDeliveryItem(BaseModel):
     attempt_count: int
     next_attempt_at: datetime
     leased_until: datetime | None = None
+    claimed_by: str | None = None
     created_at: datetime
     attempts: list[TimelineAttemptItem]
+
+
+class WorkerStat(BaseModel):
+    """Per-worker attempt count over the deliveries in the timeline window."""
+
+    name: str
+    attempts: int
 
 
 class DeliveriesResponse(BaseModel):
@@ -99,6 +108,7 @@ class DeliveriesResponse(BaseModel):
     retry_cap_seconds: float
     max_delivery_attempts: int
     receiver_endpoint_id: uuid.UUID
+    workers: list[WorkerStat]
     deliveries: list[TimelineDeliveryItem]
 
 

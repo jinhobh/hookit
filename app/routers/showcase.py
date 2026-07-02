@@ -50,6 +50,7 @@ from app.schemas.showcase import (
     RedriveResponse,
     TimelineAttemptItem,
     TimelineDeliveryItem,
+    WorkerStat,
 )
 from app.services.crypto import decrypt_secret
 from app.services.metrics import delivery_summary
@@ -150,10 +151,22 @@ def deliveries(
             attempt_count=d.attempt_count,
             next_attempt_at=d.next_attempt_at,
             leased_until=d.leased_until,
+            claimed_by=d.claimed_by,
             created_at=d.created_at,
             attempts=[TimelineAttemptItem.model_validate(a) for a in d.attempts],
         )
         for d in list_recent_deliveries(session, handles.receiver_endpoint_id)
+    ]
+    attempts_by_worker: dict[str, int] = {}
+    for item in items:
+        for attempt in item.attempts:
+            if attempt.worker_id is not None:
+                attempts_by_worker[attempt.worker_id] = (
+                    attempts_by_worker.get(attempt.worker_id, 0) + 1
+                )
+    workers = [
+        WorkerStat(name=name, attempts=count)
+        for name, count in sorted(attempts_by_worker.items(), key=lambda kv: (-kv[1], kv[0]))
     ]
     return DeliveriesResponse(
         server_time=datetime.now(UTC),
@@ -161,6 +174,7 @@ def deliveries(
         retry_cap_seconds=settings.retry_cap_seconds,
         max_delivery_attempts=settings.max_delivery_attempts,
         receiver_endpoint_id=handles.receiver_endpoint_id,
+        workers=workers,
         deliveries=items,
     )
 

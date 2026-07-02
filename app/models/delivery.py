@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -55,6 +55,9 @@ class Delivery(Base):
     attempt_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     leased_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Which worker loop most recently claimed this delivery (observability only;
+    # correctness comes from FOR UPDATE SKIP LOCKED + the lease).
+    claimed_by: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

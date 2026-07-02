@@ -48,6 +48,9 @@ primary_region = "iad"  # change to a region near you / your Postgres
   RETRY_BASE_SECONDS = "5"
   RETRY_CAP_SECONDS = "60"
   MAX_DELIVERY_ATTEMPTS = "5"
+  # The worker process runs three independent claim loops (own session + name
+  # each) so FOR UPDATE SKIP LOCKED claiming is visibly concurrent on one VM.
+  WORKER_CONCURRENCY = "3"
 
 # HTTP is served only by the `app` process group.
 [http_service]
