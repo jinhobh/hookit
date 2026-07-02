@@ -291,6 +291,25 @@ def test_idempotency_savepoint_recovers_on_concurrent_insert(
     assert second_data["event_id"] == first_data["event_id"]
     assert second_data["queued_deliveries"] == first_data["queued_deliveries"]
 
+    # And the loser's rolled-back inserts must leave no rows behind — an
+    # autoflushed Event once escaped the savepoint and leaked as an orphan.
+    from app.models.delivery import Delivery
+    from app.models.event import Event
+    from sqlalchemy import func, select
+
+    project, _ = project_with_endpoint
+    event_count = ev_db_session.execute(
+        select(func.count()).select_from(Event).where(Event.project_id == project.id)
+    ).scalar_one()
+    delivery_count = ev_db_session.execute(
+        select(func.count())
+        .select_from(Delivery)
+        .join(Event, Delivery.event_id == Event.id)
+        .where(Event.project_id == project.id)
+    ).scalar_one()
+    assert event_count == 1
+    assert delivery_count == 1
+
 
 def test_idempotency_genuine_concurrent_race_yields_one_event(db_engine: Engine) -> None:
     """Two truly concurrent POST /events with one Idempotency-Key create one event.
