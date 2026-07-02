@@ -136,3 +136,23 @@ class BurstResponse(BaseModel):
     """Returned by POST /showcase/burst."""
 
     published: int
+
+
+class DuplicateResult(BaseModel):
+    """One of the two racing POST /events responses from the duplicate demo."""
+
+    status: int
+    event_id: uuid.UUID | None = None
+    queued_deliveries: int | None = None
+
+
+class DuplicateResponse(BaseModel):
+    """Returned by POST /showcase/duplicate.
+
+    Both results carrying the same ``event_id`` (with one delivery created, not
+    two) is the demonstrated guarantee. Empty ``results`` means the producer was
+    unreachable.
+    """
+
+    idempotency_key: str | None = None
+    results: list[DuplicateResult] = []

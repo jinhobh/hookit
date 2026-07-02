@@ -52,15 +52,35 @@ class PlatformClient:
         Never raises on a non-2xx: a rejected event must not kill the producer
         loop. The caller logs; the reliability engine is the platform's job.
         """
+        status, _ = await self.publish_with_key(event_type, payload, idempotency_key=None)
+        return status
+
+    async def publish_with_key(
+        self, event_type: str, payload: dict[str, Any], idempotency_key: str | None
+    ) -> tuple[int, dict[str, Any]]:
+        """POST one event, optionally with an ``Idempotency-Key``.
+
+        Returns ``(status_code, response_body_dict)`` — the body carries the
+        platform's ``event_id`` / ``queued_deliveries``, which the duplicate
+        demo compares across racing requests. Never raises; a transport error
+        returns ``(0, {})``.
+        """
+        headers = {"Authorization": f"Bearer {self._key}"}
+        if idempotency_key is not None:
+            headers["Idempotency-Key"] = idempotency_key
         try:
             resp = await self._client.post(
                 f"{self._base}/events",
                 json={"type": event_type, "payload": payload},
-                headers={"Authorization": f"Bearer {self._key}"},
+                headers=headers,
             )
         except httpx.HTTPError as exc:
             logger.warning("publish failed for %s: %s", event_type, exc)
-            return 0
+            return 0, {}
         if resp.status_code >= 300:
             logger.warning("publish %s returned HTTP %s", event_type, resp.status_code)
-        return resp.status_code
+        try:
+            body = resp.json()
+        except ValueError:
+            body = None
+        return resp.status_code, body if isinstance(body, dict) else {}

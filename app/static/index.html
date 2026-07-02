@@ -68,6 +68,10 @@
       details.adv .adv-body { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
       details.adv input#base { width: 260px; }
 
+      .dup-note { margin: 12px 0 0; font-size: 12.5px; color: var(--muted); }
+      .dup-note b { color: var(--green); }
+      .dup-note b.bad { color: var(--red); }
+
       .console {
         background: var(--panel);
         border: 1px solid var(--border);
@@ -208,6 +212,7 @@
           <div class="cgroup">
             <span class="cg-label">Traffic</span>
             <button id="burst-btn" title="Ask the producer to fire a rapid burst of events">Generate load ⚡</button>
+            <button id="dup-btn" class="ghost" title="The producer fires the same payload twice at once with one Idempotency-Key — a real race on the ingestion unique constraint">Publish duplicate ×2</button>
           </div>
           <div class="cgroup">
             <span class="cg-label">Your pipeline</span>
@@ -218,6 +223,7 @@
             <a id="redrive-link" class="dlq-link" href="#" hidden style="color: var(--accent); border-color: var(--accent);">redrive dead-letters →</a>
           </div>
         </div>
+        <p id="dup-note" class="dup-note" hidden></p>
       </section>
 
       <div id="cards" class="cards"></div>
@@ -299,6 +305,26 @@
         act($("burst-btn"), "Generating…", async () => {
           const r = await api("/showcase/burst", { method: "POST" });
           if (!r || !r.published) alert("Producer unreachable — no burst fired. Is `python -m producer` running?");
+        }));
+
+      $("dup-btn").addEventListener("click", () =>
+        act($("dup-btn"), "Racing…", async () => {
+          const r = await api("/showcase/duplicate", { method: "POST" });
+          if (!r || !r.results || r.results.length < 2) {
+            alert("Producer unreachable — no duplicate fired. Is `python -m producer` running?");
+            return;
+          }
+          const [a, b] = r.results;
+          const note = $("dup-note");
+          note.hidden = false;
+          if (a.event_id && a.event_id === b.event_id) {
+            note.innerHTML = `Two POSTs raced in with the same <code>Idempotency-Key</code> (${esc(r.idempotency_key)}). ` +
+              `Both answered with the <b>same event_id ${esc(a.event_id.slice(0, 8))}…</b> and ` +
+              `<b>${a.queued_deliveries ?? "?"} delivery</b> was created — the unique constraint made the duplicate a no-op.`;
+          } else {
+            note.innerHTML = `Responses: HTTP ${a.status} (event_id ${esc(a.event_id || "—")}) vs ` +
+              `HTTP ${b.status} (event_id ${esc(b.event_id || "—")}) — <b class="bad">not deduplicated</b>.`;
+          }
         }));
 
       $("health-btn").addEventListener("click", () => {

@@ -14,6 +14,9 @@ with no API key while no real customer data is ever exposed:
   must be down) so redrive recovery is watchable without a ~5 min backoff wait.
 - ``POST /showcase/redrive``     — redrive a dead-lettered delivery back to pending.
 - ``POST /showcase/burst``       — proxy a load-spike request to the producer.
+- ``POST /showcase/duplicate``   — proxy to the producer: fire the same payload
+  twice concurrently with one ``Idempotency-Key`` (a real race on the ingestion
+  unique constraint) and return both responses.
 
 Plus the public ``POST /showcase/receiver/{endpoint_id}`` — the controllable
 receiver those tick deliveries are sent to.
@@ -41,6 +44,7 @@ from app.schemas.showcase import (
     BurstResponse,
     DeadLetterResponse,
     DeliveriesResponse,
+    DuplicateResponse,
     FeedEventItem,
     FeedResponse,
     HealthRequest,
@@ -265,6 +269,27 @@ def burst() -> BurstResponse:
     except (httpx.HTTPError, ValueError, TypeError):
         published = 0
     return BurstResponse(published=published)
+
+
+@router.post("/duplicate", response_model=DuplicateResponse)
+def duplicate() -> DuplicateResponse:
+    """Proxy an idempotency-race request to the producer's control server.
+
+    The producer fires the same payload twice **concurrently** with one
+    ``Idempotency-Key``; both responses come back so the dashboard can show
+    they carry the same ``event_id`` and only one delivery was created.
+    Returns empty ``results`` if the producer is unreachable, mirroring
+    ``POST /showcase/burst``.
+    """
+    settings = get_settings()
+    url = f"{settings.producer_base_url.rstrip('/')}/duplicate"
+    try:
+        with httpx.Client(timeout=settings.delivery_timeout_seconds) as client:
+            resp = client.post(url)
+            resp.raise_for_status()
+            return DuplicateResponse.model_validate(resp.json())
+    except (httpx.HTTPError, ValueError):
+        return DuplicateResponse()
 
 
 @router.post("/receiver/{endpoint_id}")

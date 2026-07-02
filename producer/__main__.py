@@ -5,9 +5,11 @@ Runs two things in one process:
 1. A background **poll loop** that fetches real spot prices on an interval and
    publishes ``price.tick`` / ``price.alert`` events to the platform.
 2. A tiny **control server** exposing ``POST /burst`` (fire a rapid batch of tick
-   events to demonstrate a traffic spike) and ``GET /health``. The platform's
-   dashboard reaches ``/burst`` via a same-origin proxy, so this server does not
-   need to be publicly exposed.
+   events to demonstrate a traffic spike), ``POST /duplicate`` (fire the same
+   payload twice concurrently with one ``Idempotency-Key`` — a genuine race on
+   the platform's ingestion unique constraint), and ``GET /health``. The
+   platform's dashboard reaches these via same-origin proxies, so this server
+   does not need to be publicly exposed.
 
 Run with ``python -m producer``.
 """
@@ -18,6 +20,7 @@ import asyncio
 import contextlib
 import logging
 import random
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from decimal import Decimal
@@ -109,6 +112,54 @@ async def _fire_burst(
     return sum(1 for s in statuses if 200 <= s < 300)
 
 
+async def _fire_duplicate(
+    *,
+    platform: PlatformClient,
+    tracker: PriceTracker,
+    source: PriceSource,
+    symbols: list[str],
+) -> dict[str, Any]:
+    """Fire the same tick twice **concurrently** with one ``Idempotency-Key``.
+
+    A genuine race on the platform's ingestion unique constraint — both POSTs
+    are in flight at once (``asyncio.gather``), so neither is a sequential
+    replay of a committed record. Returns the key and both responses so the
+    dashboard can show that they carry the same ``event_id`` and that only one
+    delivery was created.
+    """
+    latest = tracker.latest()
+    if not latest:
+        for symbol in symbols:
+            try:
+                latest[symbol] = await source.spot(symbol)
+                break
+            except (httpx.HTTPError, ValueError) as exc:
+                logger.warning("duplicate seed skip %s: %s", symbol, exc)
+    if not latest:
+        return {"idempotency_key": None, "results": []}
+
+    symbol, base_price = next(iter(latest.items()))
+    event_type, payload = build_tick_event(symbol, _jittered(base_price), base_price)
+    payload["duplicate"] = True
+    key = f"dup-{uuid.uuid4().hex}"
+
+    pairs = await asyncio.gather(
+        platform.publish_with_key(event_type, payload, key),
+        platform.publish_with_key(event_type, payload, key),
+    )
+    return {
+        "idempotency_key": key,
+        "results": [
+            {
+                "status": status,
+                "event_id": body.get("event_id"),
+                "queued_deliveries": body.get("queued_deliveries"),
+            }
+            for status, body in pairs
+        ],
+    }
+
+
 def _jittered(base_price: Decimal) -> Decimal:
     """Nudge a price by a small random percentage, preserving its scale."""
     jitter = Decimal(str(round(random.uniform(-0.002, 0.002), 6)))
@@ -166,6 +217,16 @@ def create_app(settings: ProducerSettings) -> FastAPI:
             count=settings.burst_count,
         )
         return {"published": published}
+
+    @app.post("/duplicate")
+    async def duplicate() -> dict[str, Any]:
+        """Fire the same payload twice concurrently with one Idempotency-Key."""
+        return await _fire_duplicate(
+            platform=app.state.platform,
+            tracker=app.state.tracker,
+            source=app.state.source,
+            symbols=settings.symbol_list,
+        )
 
     return app
 

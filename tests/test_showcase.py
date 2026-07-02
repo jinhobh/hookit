@@ -373,6 +373,23 @@ def test_deliveries_shows_full_attempt_history(isolated_showcase: str, db_engine
     assert all(a["duration_ms"] is not None for a in delivery["attempts"])
 
 
+def test_duplicate_returns_empty_when_producer_unreachable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The proxy degrades gracefully (empty results) when the producer is down."""
+    monkeypatch.setenv("PRODUCER_BASE_URL", "http://127.0.0.1:9")  # discard port: closed
+    get_settings.cache_clear()
+    try:
+        with TestClient(app) as client:
+            resp = client.post("/showcase/duplicate")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["idempotency_key"] is None
+            assert data["results"] == []
+    finally:
+        get_settings.cache_clear()
+
+
 def test_dead_letter_requires_pipeline_down(isolated_showcase: str) -> None:
     with TestClient(app) as client:
         # Healthy by default → refuses to fabricate a dead-letter.
