@@ -67,43 +67,45 @@ concurrency, disorder, and forgery. Layer 2 builds a live victim to prove it:
 ## Layer 1 — plumbing view
 
 ### Phase D1 — Delivery lifecycle timeline (backoff + jitter visible)
-- [ ] `GET /showcase/deliveries`: the receiver endpoint's recent deliveries
+- [x] `GET /showcase/deliveries`: the receiver endpoint's recent deliveries
       with `status`, `attempt_count`, `next_attempt_at`, `leased_until`, and
       each delivery's `attempts[]` (number, HTTP status, duration_ms,
       created_at). Read-only, scoped like `/showcase/feed`.
-- [ ] Dashboard "Delivery lifecycle" panel: per-delivery attempt timeline with
+- [x] Dashboard "Delivery lifecycle" panel: per-delivery attempt timeline with
       measured gaps labeled, live countdown to `next_attempt_at`, and the
       formula annotated per gap: nominal `min(base·2^(n−1), cap)` vs observed
       gap — the difference **is** the jitter, shown explicitly.
-- [ ] Quick win, same PR as the panel: "Send forged request" link that POSTs an
+- [x] Quick win, same PR as the panel: "Send forged request" link that POSTs an
       unsigned payload to the receiver URL from the browser → shows up in the
       inbox as `✗ unsigned → 401`.
-- [ ] Deploy tuning (env only, no code): `RETRY_BASE_SECONDS=5`,
+- [x] Deploy tuning (env only, no code): `RETRY_BASE_SECONDS=5`,
       `RETRY_CAP_SECONDS=60`, `MAX_DELIVERY_ATTEMPTS=5` on Fly so a full
       retry → dead-letter cycle is watchable (~75 s). The fast-forward button
       remains the impatient path.
 
 ### Phase D2 — Multi-worker claiming (race handling visible)
-- [ ] Migration: `deliveries.claimed_by` (nullable text) and
+- [x] Migration: `deliveries.claimed_by` (nullable text) and
       `delivery_attempts.worker_id`; stamped in `claim_due_deliveries` /
       `process_delivery`.
-- [ ] Settings: `WORKER_NAME` (default `hostname:pid`) and
+- [x] Settings: `WORKER_NAME` (default `hostname:pid`) and
       `WORKER_CONCURRENCY` — the worker entrypoint spawns N independent claim
       loops (own session + name each) in one process, exercising
       `FOR UPDATE SKIP LOCKED` across real sessions without extra machines.
-- [ ] Dashboard: color-code timeline/inbox items by worker; "Workers" strip
-      with per-worker claim counts; standing caption "0 duplicate attempts —
+- [x] Dashboard: color-code timeline items by worker (inbox rows carry no
+      worker attribution — deliberately not added, since that would mean a new
+      outbound header on the production delivery path); "Workers" strip with
+      per-worker attempt counts; standing caption "0 duplicate attempts —
       enforced by `UNIQUE(delivery_id, attempt_number)`".
-- [ ] Test: two sessions claim concurrently → disjoint sets, correct
+- [x] Test: two sessions claim concurrently → disjoint sets, correct
       `claimed_by`.
 
 ### Phase D3 — Idempotency race button
-- [ ] Producer control server: `POST /duplicate` fires the same payload twice
+- [x] Producer control server: `POST /duplicate` fires the same payload twice
       **concurrently** with the same `Idempotency-Key` (a genuine race on the
       ingestion unique constraint, not a sequential replay).
-- [ ] `POST /showcase/duplicate` proxies to it (same pattern as `/burst`) and
+- [x] `POST /showcase/duplicate` proxies to it (same pattern as `/burst`) and
       returns both responses.
-- [ ] Dashboard: "Publish duplicate" button; result shows both responses carry
+- [x] Dashboard: "Publish duplicate" button; result shows both responses carry
       the same `event_id` and one delivery was created, not two.
 
 ### Phase D4 — Crash / lease recovery (stretch; requires D2)
