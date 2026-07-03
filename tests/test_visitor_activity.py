@@ -64,6 +64,13 @@ def test_dashboard_get_routes_record_visitor_activity(isolated_showcase: str) ->
         from app.db.session import SessionLocal
         from app.services.showcase import resolve_showcase
 
+        # Seed explicitly: the showcase is only created lazily on the first
+        # route call, but calling a route would also record visitor activity,
+        # defeating the pre-condition check below.
+        with SessionLocal() as session:
+            seed_showcase(session, get_settings())
+            session.commit()
+
         with SessionLocal() as session:
             handles = resolve_showcase(session)
             assert handles is not None
@@ -79,6 +86,12 @@ def test_receiver_post_does_not_record_visitor_activity(isolated_showcase: str) 
     with TestClient(app) as client:
         from app.db.session import SessionLocal
         from app.services.showcase import resolve_showcase
+
+        # Seed explicitly so resolve_showcase returns handles before any route
+        # request (the showcase is otherwise seeded lazily by the first route call).
+        with SessionLocal() as session:
+            seed_showcase(session, get_settings())
+            session.commit()
 
         with SessionLocal() as session:
             handles = resolve_showcase(session)

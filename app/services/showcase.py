@@ -29,7 +29,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, func, select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, selectinload
 
@@ -410,13 +411,19 @@ def touch_visitor_seen(session: Session, project_id: uuid.UUID) -> None:
     Called only from the dashboard's own read routes — never from the
     ``producer`` service's self-generated traffic — so it is a reliable
     signal for the idle watchdog. The caller commits.
+
+    Uses INSERT … ON CONFLICT DO UPDATE so concurrent first-visit requests
+    (all three dashboard GET routes fire in parallel via Promise.all) cannot
+    race to insert the same primary key and cause an IntegrityError.
     """
-    row = session.get(DemoVisitorActivity, project_id)
-    if row is None:
-        session.add(DemoVisitorActivity(project_id=project_id))
-    else:
-        row.last_seen_at = datetime.now(UTC)
-    session.flush()
+    session.execute(
+        pg_insert(DemoVisitorActivity)
+        .values(project_id=project_id)
+        .on_conflict_do_update(
+            index_elements=["project_id"],
+            set_={"last_seen_at": func.now()},
+        )
+    )
 
 
 def get_last_visitor_seen(session: Session, project_id: uuid.UUID) -> datetime | None:
