@@ -451,6 +451,7 @@
       .status-code.ok { color: var(--good); }
       .status-code.err { color: var(--bad); }
       .inbox-body { padding: 0 15px 15px; }
+      .inbox-body .env-label { margin: 2px 0 8px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: var(--muted); }
       .inbox-body .hdrs { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 12px; white-space: pre-wrap; word-break: break-all; color: var(--ink); font-family: var(--mono); }
       .inbox-body .hdrs .hk { color: var(--muted); }
       .inbox-body pre { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 8px 0 0; font-size: 12px; overflow-x: auto; color: var(--ink); }
@@ -641,6 +642,7 @@
             <p>Now that the receiver is back, ask HookIt to deliver everything it set aside. Watch them arrive.</p>
           </div>
         </div>
+        <p id="receiver-note" class="note" hidden></p>
         <p class="panel-title">Delivery tracking · every try, exactly as it happened</p>
         <div id="lifecycle-wrap" class="lifecycle">
           <p class="msg">Messages headed to your receiver appear here, each with its full delivery history.</p>
@@ -768,29 +770,41 @@
       }
 
       // ---- traffic + reliability controls --------------------------------
+      // Plain sentence up front; the technical evidence sits behind "Why?".
+      function noteHtml(plain, why) {
+        return plain + (why ? `<details class="why"><summary>Why?</summary><div class="why-body">${why}</div></details>` : "");
+      }
+      function showNote(el, plain, why) {
+        el.hidden = false;
+        el.innerHTML = noteHtml(plain, why);
+      }
+      const SENDER_DOWN = "The demo sender isn't answering, so nothing was sent. (It runs as a separate service.)";
+
       $("burst-btn").addEventListener("click", () =>
         act($("burst-btn"), "Sending…", async () => {
           const r = await api("/showcase/burst", { method: "POST" });
-          if (!r || !r.published) alert("The demo sender isn't answering, so nothing was sent.");
+          if (!r || !r.published) showNote($("dup-note"), SENDER_DOWN);
         }));
 
       $("dup-btn").addEventListener("click", () =>
         act($("dup-btn"), "Sending…", async () => {
           const r = await api("/showcase/duplicate", { method: "POST" });
           if (!r || !r.results || r.results.length < 2) {
-            alert("Producer unreachable — no duplicate fired. Is `python -m producer` running?");
+            showNote($("dup-note"), SENDER_DOWN);
             return;
           }
           const [a, b] = r.results;
-          const note = $("dup-note");
-          note.hidden = false;
           if (a.event_id && a.event_id === b.event_id) {
-            note.innerHTML = `Two POSTs raced in with the same <code>Idempotency-Key</code> (${esc(r.idempotency_key)}). ` +
-              `Both answered with the <b>same event_id ${esc(a.event_id.slice(0, 8))}…</b> and ` +
-              `<b>${a.queued_deliveries ?? "?"} delivery</b> was created — the unique constraint made the duplicate a no-op.`;
+            showNote($("dup-note"),
+              `Two identical messages raced in at the same moment. HookIt recognized them as the ` +
+                `same message and <b>kept exactly one</b>.`,
+              `Both POSTs carried the same <code>Idempotency-Key</code> (${esc(r.idempotency_key)}). ` +
+                `Both responses returned the same <code>event_id</code> ${esc(a.event_id.slice(0, 8))}… and ` +
+                `${a.queued_deliveries ?? "?"} delivery was created — the unique constraint at ingestion made the duplicate a no-op.`);
           } else {
-            note.innerHTML = `Responses: HTTP ${a.status} (event_id ${esc(a.event_id || "—")}) vs ` +
-              `HTTP ${b.status} (event_id ${esc(b.event_id || "—")}) — <b class="bad">not deduplicated</b>.`;
+            showNote($("dup-note"),
+              `The two copies were treated as <b class="bad">different messages</b> — that should never happen.`,
+              `Responses: HTTP ${a.status} (event_id ${esc(a.event_id || "—")}) vs HTTP ${b.status} (event_id ${esc(b.event_id || "—")}).`);
           }
         }));
 
@@ -809,9 +823,13 @@
 
       $("force-dlq").addEventListener("click", () => {
         act($("force-dlq"), "Fast-forwarding…", async () => {
-          try { await api("/showcase/dead-letter", { method: "POST" }); }
-          catch (err) {
-            if (err.status === 409) { alert("Switch the receiver off first — messages are only set aside while it's off."); return; }
+          try {
+            await api("/showcase/dead-letter", { method: "POST" });
+            showNote($("receiver-note"),
+              `One failing message was fast-forwarded through its remaining tries and <b>set aside</b>. ` +
+                `It's safe, not lost — switch the receiver back on and deliver it.`);
+          } catch (err) {
+            if (err.status === 409) { showNote($("receiver-note"), "Switch the receiver off first — messages are only set aside while it's off."); return; }
             throw err;
           }
         });
@@ -826,7 +844,12 @@
             body: JSON.stringify({ type: "price.tick", payload: { symbol: "BTC-USD", price: "999999", forged: true } }),
           });
           if (res.status !== 401) throw new Error("expected 401, got HTTP " + res.status);
-          // Success is the rejection: it shows in the inbox as ✗ unsigned → 401.
+          // Success is the rejection: it shows in the mailbox as rejected.
+          showNote($("receiver-note"),
+            `Your fake message was <b class="bad">turned away</b> — it had no seal. ` +
+              `Find it in the mailbox below, marked &ldquo;rejected&rdquo;.`,
+            `The browser POSTed an unsigned payload straight to the receiver. The constant-time ` +
+              `HMAC-SHA256 check rejected it with HTTP 401; it never touched a delivery.`);
         }));
 
       $("redrive-link").addEventListener("click", () => {
@@ -840,10 +863,8 @@
       });
 
       // ---- two-banks ledger: chaos controls --------------------------------
-      function ledgerNote(html) {
-        const note = $("ledger-note");
-        note.hidden = false;
-        note.innerHTML = html;
+      function ledgerNote(plain, why) {
+        showNote($("ledger-note"), plain, why);
       }
       async function setBothBanks(mode) {
         await Promise.all(["naive", "safe"].map((bank) =>
@@ -861,11 +882,20 @@
         const restoring = anyBankMode("flaky");
         act($("lostack-btn"), "Switching…", async () => {
           await setBothBanks(restoring ? "healthy" : "flaky");
-          ledgerNote(restoring
-            ? `Acks restored — pending retries will now succeed. Bank A is left holding the double credits; ` +
-              `<b>Bank B never re-applied a retry</b>, because each delivery's stable <code>event_id</code> was already in its processed table.`
-            : `Both banks now <b>process each webhook, then fail to respond</b>. The platform can't tell "processed" from "lost" — ` +
-              `so it correctly retries. Bank A credits the same trade twice; Bank B dedupes on <code>event_id</code>. Click again to restore acks.`);
+          if (restoring) {
+            ledgerNote(
+              `Confirmations are back. Bank A is stuck with the trades it counted twice; ` +
+                `<b>Bank B never counted a repeat</b>.`,
+              `Pending retries now succeed. Bank B's dedupe on the stable <code>event_id</code> made every re-delivery a no-op; ` +
+                `Bank A re-applied them.`);
+          } else {
+            ledgerNote(
+              `Both banks are still processing trades — they've just <b>stopped saying &ldquo;got it&rdquo;</b>. ` +
+                `HookIt can't tell &ldquo;done&rdquo; from &ldquo;lost&rdquo;, so it sends each trade again. ` +
+                `Watch Bank A count trades twice. Click the button again to restore the confirmations.`,
+              `Without a 2xx acknowledgment, at-least-once delivery requires a retry. Bank A re-applies each retry; ` +
+                `Bank B finds the delivery's <code>event_id</code> already in its processed table and answers 200 without re-applying.`);
+          }
         });
       });
 
@@ -873,11 +903,19 @@
         const restoring = anyBankMode("down");
         act($("timetravel-btn"), "Switching…", async () => {
           await setBothBanks(restoring ? "healthy" : "down");
-          ledgerNote(restoring
-            ? `Banks are back. Queued retries now arrive <b>interleaved with fresh trades — out of order</b>. Bank A stamps ` +
-              `"last trade" by arrival order and shows stale state (⏳); Bank B compares the event's <code>executed_at</code> timestamp and rejects stale overwrites.`
-            : `Both banks are <b>down</b>; every delivery fails and queues as a retry with exponential backoff (watch scene 2's timeline). ` +
-              `Click again to restore and watch old retries race fresh trades.`);
+          if (restoring) {
+            ledgerNote(
+              `The banks are back. Held messages are arriving <b>mixed in with brand-new ones</b> — ` +
+                `watch Bank B refuse to let old news overwrite new.`,
+              `Ordering isn't guaranteed once retries are in play. Bank A stamps &ldquo;last trade&rdquo; by arrival order and ` +
+                `shows stale state; Bank B compares the signed <code>executed_at</code> timestamp and rejects stale overwrites.`);
+          } else {
+            ledgerNote(
+              `Both banks are <b>offline</b>. HookIt is holding every trade and quietly retrying — ` +
+                `bring them back whenever you're ready.`,
+              `Every delivery fails and requeues with exponential backoff. The same retry machinery is visible ` +
+                `try-by-try in the delivery tracking list in Story 2.`);
+          }
         });
       });
 
@@ -888,9 +926,12 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ same_account: true }),
           });
-          if (!r || !r.published) { alert("Producer unreachable — no storm fired. Is `python -m producer` running?"); return; }
-          ledgerNote(`${r.published} concurrent trades hit <b>one account</b> across parallel workers. Bank A's read-modify-write ` +
-            `interleaves and a trade evaporates from its balance; Bank B's <code>SELECT … FOR UPDATE</code> serializes the writes to the exact total.`);
+          if (!r || !r.published) { ledgerNote(SENDER_DOWN); return; }
+          ledgerNote(
+            `${r.published} trades just hit <b>one account</b> at the same moment. ` +
+              `Bank A loses one in the scramble; Bank B stays exact.`,
+            `Parallel workers deliver the trades concurrently. Bank A's read → modify → write interleaves and drops an update; ` +
+              `Bank B's <code>SELECT … FOR UPDATE</code> serializes the writes to the exact total.`);
         }));
 
       $("forge-ledger-btn").addEventListener("click", () =>
@@ -915,9 +956,12 @@
             return [b.bank, res.status];
           }));
           const by = Object.fromEntries(statuses);
-          ledgerNote(`An <b>unsigned</b> $5,000 trade was POSTed straight at both banks from your browser. Bank A answered ` +
-            `HTTP ${by.naive} and booked money that never existed — it isn't in the platform's event log, so it shows as pure drift. ` +
-            `Bank B's constant-time HMAC check answered <b>HTTP ${by.safe}</b> and its ledger never moved.`);
+          ledgerNote(
+            `A fake $5,000 trade was sent straight to both banks, skipping HookIt entirely. ` +
+              `Bank A <b class="bad">accepted it and booked money that never existed</b>. Bank B turned it away.`,
+            `The request carried no HMAC signature. Bank A answered HTTP ${by.naive} and applied it — the trade isn't in ` +
+              `the platform's event log, so it shows as pure drift. Bank B's constant-time HMAC check answered HTTP ${by.safe} ` +
+              `and its ledger never moved.`);
         }));
 
       // ---- two-banks ledger: rendering -------------------------------------
@@ -1023,27 +1067,27 @@
       function renderMap(summary, feed) {
         const latest = feed.events[0];
         $("map-producer").textContent = latest
-          ? `last event ${latest.type} · ${fmtTime(latest.created_at)}`
-          : "no events yet";
-        const bits = [`${summary.totals.succeeded} delivered`];
-        if (summary.totals.failed) bits.push(`${summary.totals.failed} retrying`);
-        if (summary.dlq_depth) bits.push(`${summary.dlq_depth} dead-lettered`);
+          ? `last message: ${plainType(latest.type)} · ${fmtClock(latest.created_at)}`
+          : "no messages yet";
+        const bits = [`${summary.totals.succeeded.toLocaleString()} delivered`];
+        if (summary.totals.failed) bits.push(`${summary.totals.failed} being retried`);
+        if (summary.dlq_depth) bits.push(`${summary.dlq_depth} set aside`);
         $("map-engine").textContent = bits.join(" · ");
 
         const discordOn = !!(feed.discord_widget_server_id && feed.discord_widget_channel_id);
-        setMapDest("mdot-discord", "map-discord", discordOn ? "ok" : "", discordOn ? "delivering live" : "not configured");
-        setMapDest("mdot-pipe", "map-pipe", feed.healthy ? "ok" : "bad",
-          feed.healthy ? "healthy" : "down — retrying");
+        setMapDest("mdot-discord", "map-discord", discordOn ? "ok" : "", discordOn ? "receiving live" : "not set up here");
+        setMapDest("mdot-pipe", "map-pipe", feed.healthy ? "ok" : "warn",
+          feed.healthy ? "accepting messages" : "offline — HookIt is retrying");
 
         if (ledgerData && ledgerData.banks.length) {
           const naive = ledgerData.banks.find((b) => b.bank === "naive");
           const syncing = ledgerData.banks.some((b) => b.pending_deliveries > 0);
           if (naive && !naive.reconciled && !syncing) {
-            setMapDest("mdot-banks", "map-banks", "bad", `Bank A drifting ${fmtMoney(naive.total_drift)}`);
+            setMapDest("mdot-banks", "map-banks", "bad", `Bank A's books are off by ${fmtMoney(naive.total_drift)}`);
           } else if (syncing) {
-            setMapDest("mdot-banks", "map-banks", "warn", "syncing after failures");
+            setMapDest("mdot-banks", "map-banks", "warn", "catching up after trouble");
           } else {
-            setMapDest("mdot-banks", "map-banks", "ok", "both reconciled");
+            setMapDest("mdot-banks", "map-banks", "ok", "books balance ✓");
           }
         }
       }
@@ -1082,17 +1126,20 @@
           `</table>`;
       }
 
-      // ---- rendering: live price feed ------------------------------------
-      function feedRow(e) {
+      // ---- rendering: live message feed ------------------------------------
+      const FEED_MAX_ROWS = 6; // keep the visible stream calm
+      let feedPrevFirstId = null;
+      function feedRow(e, isNew) {
         const p = e.payload || {};
+        const rowCls = isNew ? "feed-row new" : "feed-row";
         if (e.type === "trade.executed") {
           const buy = p.side === "buy";
-          return `<div class="feed-row">` +
+          return `<div class="${rowCls}">` +
             `<span class="tag trade">trade</span>` +
-            `<span class="sym mono">${esc(p.account || "?")}</span>` +
-            `<span class="px mono">${fmtMoney(p.amount)}</span>` +
-            `<span class="chg ${buy ? "green" : "red"} mono">${buy ? "▲ buy" : "▼ sell"} ${esc(p.symbol || "")}</span>` +
-            `<span class="time mono">${fmtTime(e.created_at)}</span></div>`;
+            `<span class="sym">${esc(p.account || "?")}</span>` +
+            `<span class="px">${fmtMoney(p.amount)}</span>` +
+            `<span class="chg ${buy ? "green" : "red"}">${buy ? "▲ buy" : "▼ sell"} ${esc(p.symbol || "")}</span>` +
+            `<span class="time">${fmtClock(e.created_at)}</span></div>`;
         }
         const dir = p.direction;
         const arrow = dir === "up" ? "▲" : dir === "down" ? "▼" : "•";
@@ -1100,17 +1147,26 @@
         const isAlert = e.type === "price.alert";
         const price = p.price != null ? fmtPrice(p.price, p.quote) : "";
         const pct = p.change_pct != null ? p.change_pct + "%" : "";
-        return `<div class="feed-row">` +
-          `<span class="tag ${isAlert ? "alert" : "tick"}">${isAlert ? "alert" : "tick"}</span>` +
-          `<span class="sym mono">${esc(p.symbol || e.type)}</span>` +
-          `<span class="px mono">${esc(price)}</span>` +
-          `<span class="chg ${cls} mono">${arrow} ${esc(pct)}</span>` +
-          `<span class="time mono">${fmtTime(e.created_at)}</span></div>`;
+        return `<div class="${rowCls}">` +
+          `<span class="tag ${isAlert ? "alert" : "tick"}">${isAlert ? "price alert" : "price"}</span>` +
+          `<span class="sym">${esc(p.symbol || plainType(e.type))}</span>` +
+          `<span class="px">${esc(price)}</span>` +
+          `<span class="chg ${cls}">${arrow} ${esc(pct)}</span>` +
+          `<span class="time">${fmtClock(e.created_at)}</span></div>`;
       }
       function renderFeed(events) {
-        $("feed-wrap").innerHTML = events.length
-          ? events.map(feedRow).join("")
-          : `<p class="msg">No events yet. The producer publishes every few seconds — if this stays empty, the producer service isn't running (<code>python -m producer</code>).</p>`;
+        const shown = events.slice(0, FEED_MAX_ROWS);
+        if (!shown.length) {
+          $("feed-wrap").innerHTML = `<p class="msg">No messages yet — the demo sender publishes every few seconds.</p>`;
+          return;
+        }
+        // Only rows newer than the previous top row fade in; everything else stays still.
+        let seen = false;
+        $("feed-wrap").innerHTML = shown.map((e) => {
+          if (e.id === feedPrevFirstId) seen = true;
+          return feedRow(e, feedPrevFirstId !== null && !seen);
+        }).join("");
+        feedPrevFirstId = shown[0].id;
       }
 
       // ---- rendering: delivery lifecycle timeline -------------------------
@@ -1261,27 +1317,27 @@
           : `<p class="uth-note">No deliveries yet.</p>`;
       }
 
-      // ---- rendering: request inbox --------------------------------------
+      // ---- rendering: receiver mailbox --------------------------------------
       function prettyBody(body) {
         try { return JSON.stringify(JSON.parse(body), null, 2); } catch { return body; }
       }
       function inboxItem(r) {
         const cls = r.response_status < 400 ? "ok" : "err";
-        const label = r.response_status === 200 ? "200 accepted"
-          : r.response_status === 503 ? "503 pipeline down"
-          : r.response_status === 401 ? "401 bad signature"
-          : String(r.response_status);
+        const label = r.response_status === 200 ? "accepted ✓"
+          : r.response_status === 503 ? "receiver offline"
+          : r.response_status === 401 ? "rejected — no seal"
+          : `answered ${r.response_status}`;
         const sig = r.verified
-          ? `<span class="sig ok">🔒 verified</span>`
-          : `<span class="sig err">✗ unsigned</span>`;
+          ? `<span class="sig ok">🔒 sealed</span>`
+          : `<span class="sig err">✗ no seal</span>`;
         const open = inboxOpen.has(r.id);
         let body = `<div class="inbox-item"><div class="inbox-head" data-inbox="${r.id}">` +
           `<span class="status-code ${cls}">${label}</span>` +
-          `<span class="evt">${esc(r.event_type)}</span>` +
-          `<span class="attempt">attempt ${r.attempt}</span>${sig}` +
-          `<span class="time mono">${fmtTime(r.received_at)}</span></div>`;
+          `<span class="evt">${esc(plainType(r.event_type))}</span>` +
+          `<span class="attempt">try ${r.attempt}</span>${sig}` +
+          `<span class="time">${fmtClock(r.received_at)}</span></div>`;
         if (open) {
-          body += `<div class="inbox-body"><div class="hdrs">` +
+          body += `<div class="inbox-body"><p class="env-label">The raw envelope — exactly what your receiver was handed</p><div class="hdrs">` +
             `<span class="hk">POST</span> …/showcase/receiver/…\n` +
             `<span class="hk">X-Webhook-Timestamp:</span> ${esc(r.timestamp_header || "—")}\n` +
             `<span class="hk">X-Webhook-Signature:</span> ${esc(r.signature_header || "—")}\n` +
@@ -1293,7 +1349,7 @@
       function renderInbox(items) {
         $("inbox-wrap").innerHTML = items.length
           ? items.map(inboxItem).join("")
-          : `<p class="msg">Nothing received yet — deliveries that reach your endpoint show up here with their real HMAC signature.</p>`;
+          : `<p class="msg">Nothing here yet — messages that reach your receiver appear here.</p>`;
         $("inbox-wrap").querySelectorAll("[data-inbox]").forEach((el) =>
           el.addEventListener("click", () => {
             const id = el.dataset.inbox;
@@ -1343,7 +1399,7 @@
           setLive(true);
         } catch (e) {
           setLive(false);
-          $("feed-wrap").innerHTML = `<p class="msg error">Could not reach the showcase API (${e.status ? "HTTP " + e.status : e.message}).</p>`;
+          $("feed-wrap").innerHTML = `<p class="msg">Can't reach HookIt right now — retrying automatically.</p>`;
         }
       }
       function start() {
@@ -1352,8 +1408,9 @@
         renderHealth();
         refresh();
         timer = setInterval(refresh, 2000);
-        // Countdowns tick between polls from the cached snapshot.
-        tickTimer = setInterval(renderLifecycle, 250);
+        // Countdowns tick between polls from the cached snapshot; whole seconds
+        // in the visible layer, so once per second is enough.
+        tickTimer = setInterval(renderLifecycle, 1000);
       }
 
       start();
