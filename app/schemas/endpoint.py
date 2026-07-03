@@ -8,20 +8,16 @@ from datetime import datetime
 from pydantic import AnyHttpUrl, BaseModel, Field, field_validator
 
 from app.models.endpoint import EndpointStatus, PayloadFormat
-
-# Event types starting with this prefix are reserved for internal use (the
-# interactive dashboard demo tags its endpoint with the "__demo__" marker) so a
-# real endpoint can never accidentally subscribe to demo traffic.
-_RESERVED_EVENT_TYPE_PREFIX = "__"
+from app.schemas._reserved import RESERVED_EVENT_TYPE_PREFIX
 
 
 def _check_event_types(v: list[str]) -> list[str]:
     for item in v:
         if not item.strip():
             raise ValueError("each event_type must be a non-empty string")
-        if item.startswith(_RESERVED_EVENT_TYPE_PREFIX):
+        if item.startswith(RESERVED_EVENT_TYPE_PREFIX):
             raise ValueError(
-                f"event_type must not start with reserved prefix {_RESERVED_EVENT_TYPE_PREFIX!r}"
+                f"event_type must not start with reserved prefix {RESERVED_EVENT_TYPE_PREFIX!r}"
             )
     return v
 

@@ -129,6 +129,16 @@ def list_endpoints(
     return EndpointPageResponse(items=items, next_cursor=next_cursor)
 
 
+@router.get("/{endpoint_id}", response_model=EndpointResponse)
+def get_endpoint(
+    endpoint_id: uuid.UUID,
+    project: Project = Depends(get_current_project),
+    session: Session = Depends(get_session),
+) -> Endpoint:
+    """Return a single endpoint owned by the authenticated project."""
+    return _get_endpoint_or_404(endpoint_id, project, session)
+
+
 @router.patch("/{endpoint_id}", response_model=EndpointResponse)
 def update_endpoint(
     endpoint_id: uuid.UUID,

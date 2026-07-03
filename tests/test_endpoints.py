@@ -397,6 +397,61 @@ def test_list_endpoints_invalid_cursor_returns_422(
 
 
 # ---------------------------------------------------------------------------
+# GET /endpoints/{id}
+# ---------------------------------------------------------------------------
+
+
+def test_get_endpoint_returns_200_with_correct_shape(
+    client_a: TestClient, project_a_key: str
+) -> None:
+    created = client_a.post(
+        "/endpoints",
+        json={"url": _VALID_URL, "event_types": _VALID_TYPES},
+        headers=_auth(project_a_key),
+    ).json()
+    ep_id = created["id"]
+    resp = client_a.get(f"/endpoints/{ep_id}", headers=_auth(project_a_key))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["id"] == ep_id
+    assert data["url"] == _VALID_URL
+    assert data["event_types"] == _VALID_TYPES
+    assert data["status"] == "active"
+    assert "secret" not in data
+
+
+def test_get_endpoint_404_for_nonexistent_id(client_a: TestClient, project_a_key: str) -> None:
+    import uuid
+
+    resp = client_a.get(f"/endpoints/{uuid.uuid4()}", headers=_auth(project_a_key))
+    assert resp.status_code == 404
+
+
+def test_get_endpoint_404_for_wrong_project(
+    client_a: TestClient, project_a_key: str, project_b_key: str
+) -> None:
+    """Project B cannot fetch Project A's endpoint — returns 404, not 403."""
+    created = client_a.post(
+        "/endpoints",
+        json={"url": _VALID_URL, "event_types": _VALID_TYPES},
+        headers=_auth(project_a_key),
+    ).json()
+    ep_id = created["id"]
+    resp = client_a.get(f"/endpoints/{ep_id}", headers=_auth(project_b_key))
+    assert resp.status_code == 404
+
+
+def test_get_endpoint_requires_auth(client_a: TestClient, project_a_key: str) -> None:
+    created = client_a.post(
+        "/endpoints",
+        json={"url": _VALID_URL, "event_types": _VALID_TYPES},
+        headers=_auth(project_a_key),
+    ).json()
+    resp = client_a.get(f"/endpoints/{created['id']}")
+    assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
 # PATCH /endpoints/{id}
 # ---------------------------------------------------------------------------
 
