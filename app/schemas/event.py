@@ -10,6 +10,7 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 from app.core.config import get_settings
+from app.schemas._reserved import RESERVED_EVENT_TYPE_PREFIX
 
 
 class EventCreate(BaseModel):
@@ -23,6 +24,10 @@ class EventCreate(BaseModel):
     def type_nonempty(cls, v: str) -> str:
         if not v.strip():
             raise ValueError("type must be a non-empty string")
+        if v.startswith(RESERVED_EVENT_TYPE_PREFIX):
+            raise ValueError(
+                f"type must not start with reserved prefix {RESERVED_EVENT_TYPE_PREFIX!r}"
+            )
         return v
 
     @field_validator("payload")

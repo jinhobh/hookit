@@ -283,8 +283,33 @@
       .bank-tail .trow .time { margin-left: auto; }
       .bank-backlog { color: var(--muted); font-size: 11.5px; margin-top: 6px; }
 
-      /* ---- live price feed -------------------------------------------- */
-      .feed { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+      /* Two-banks ledger (the centerpiece) */
+      .pill.flaky { color: var(--amber); background: rgba(251,191,36,0.14); }
+      .banks { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+      @media (max-width: 980px) { .banks { grid-template-columns: 1fr; } }
+      .bank { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+      .bank-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+      .bank-name { font-weight: 700; }
+      .bank-meter { margin-left: auto; font-weight: 700; font-size: 13px; }
+      .bank-meter.ok { color: var(--green); }
+      .bank-meter.bad { color: var(--red); }
+      .bank-meter.sync { color: var(--amber); }
+      .bank-sub { color: var(--muted); font-size: 12px; margin: 2px 0 10px; }
+      .accounts { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+      .accounts th { text-align: left; color: var(--muted); font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.4px; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+      .accounts td { padding: 5px 6px; border-bottom: 1px solid var(--border); }
+      .accounts tr:last-child td { border-bottom: none; }
+      .accounts .num { text-align: right; }
+      .drift-ok { color: var(--green); }
+      .drift-bad { color: var(--red); font-weight: 700; }
+      .stale-tag { color: var(--amber); font-size: 10.5px; font-weight: 700; }
+      .bank-tail { margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 6px; }
+      .bank-tail .trow { display: flex; gap: 8px; align-items: center; font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; color: var(--muted); padding: 1px 0; flex-wrap: wrap; }
+      .bank-tail .trow .time { margin-left: auto; }
+      .bank-backlog { color: var(--muted); font-size: 11.5px; margin-top: 6px; }
+
+      /* Live price feed */
+      .feed { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 22px; }
       .feed-row { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--border); }
       .feed-row:last-child { border-bottom: none; }
       .feed-row .tag { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 2px 7px; border-radius: 999px; }
@@ -421,42 +446,44 @@
         </p>
       </section>
 
-      <!-- ============ SCENE 1: the live stream ============ -->
-      <section class="scene" id="scene-1">
-        <span class="scene-num">Scene 1</span>
-        <h2>The live stream</h2>
-        <p class="scene-lede">
-          Every row below is a real event published to <code>POST /events</code> and fanned out by
-          the delivery engine. The Discord channel on the right is a real server receiving the same
-          price alerts, signed and delivered by this platform.
+      <section class="console">
+        <p class="intro">
+          <strong>One event stream, two banks.</strong> The producer also emits real
+          <code>trade.executed</code> events, and this platform fans each one out to both banks
+          below through the same delivery engine — at-least-once, HMAC-signed, with a stable
+          <code>event_id</code>, a timestamp, and an attempt counter on every delivery.
+          <strong>Bank A</strong> applies every webhook as it arrives: no signature check, no
+          dedupe, no locking. <strong>Bank B</strong> uses the delivery metadata the way a correct
+          receiver should. The meter continuously diffs both ledgers against the balances computed
+          from the platform's own event log. Break the world below; watch who stays solvent.
         </p>
-        <div class="actions">
-          <div class="action">
-            <button id="burst-btn">Generate load ⚡</button>
-            <p>Ask the producer to fire a rapid burst of events through the whole pipeline. Watch the counters and the feed react.</p>
-          </div>
-          <div class="action">
-            <button id="dup-btn" class="ghost">Publish duplicate ×2</button>
-            <p>Two identical POSTs race in at once with one <code>Idempotency-Key</code>. Only one event should exist afterwards — the result appears here.</p>
+        <div class="controls">
+          <div class="cgroup">
+            <span class="cg-label">Chaos</span>
+            <button id="lostack-btn" class="danger" title="Both banks keep processing webhooks but stop acknowledging them — the platform retries, redelivering trades that were already applied">Drop acks 📉</button>
+            <button id="storm-btn" title="The producer fires concurrent trades against ONE account — parallel workers deliver them overlapping">Trade storm 🌊</button>
+            <button id="timetravel-btn" class="ghost" title="Take both banks down so deliveries queue as retries, then restore — retries arrive interleaved with fresh trades, out of order">Pull the plug 🔌</button>
+            <button id="forge-ledger-btn" class="ghost" title="POST an unsigned fake trade straight at both banks from this browser">Forge a trade 🕵</button>
           </div>
         </div>
-        <p id="dup-note" class="note" hidden></p>
-        <div id="cards" class="cards"></div>
-        <div class="grid">
-          <div>
-            <p class="panel-title">Live events · published to <code>POST /events</code></p>
-            <div id="feed-wrap" class="feed">
-              <p class="msg">No events yet. The producer publishes every few seconds — if this stays empty, the producer service isn't running (<code>python -m producer</code>).</p>
-            </div>
-          </div>
-          <div>
-            <p class="panel-title">Real Discord channel · the same alerts, delivered</p>
-            <div id="discord-wrap" class="discord">
-              <p class="msg">Discord embed not configured. Set <code>DISCORD_WIDGET_SERVER_ID</code> and <code>DISCORD_WIDGET_CHANNEL_ID</code>.</p>
-            </div>
-          </div>
+        <p id="ledger-note" class="dup-note" hidden></p>
+        <div id="banks-wrap" class="banks">
+          <p class="msg">Waiting for the first trades… is <code>python -m producer</code> running?</p>
         </div>
       </section>
+
+      <div id="cards" class="cards"></div>
+
+      <p class="section-title">Live price feed · real events published to <code>POST /events</code></p>
+      <div id="feed-wrap" class="feed">
+        <p class="msg">Waiting for the producer's first ticks…</p>
+      </div>
+
+      <p class="section-title">Delivery lifecycle · every attempt, backoff gap, and lease — straight from the engine's own rows</p>
+      <div id="workers-strip" class="workers" hidden></div>
+      <div id="lifecycle-wrap" class="lifecycle">
+        <p class="msg">Recent deliveries to your pipeline appear here with their full retry history.</p>
+      </div>
 
       <!-- ============ SCENE 2: break the pipeline ============ -->
       <section class="scene" id="scene-2">
@@ -696,7 +723,7 @@
           ledgerNote(restoring
             ? `Banks are back. Queued retries now arrive <b>interleaved with fresh trades — out of order</b>. Bank A stamps ` +
               `"last trade" by arrival order and shows stale state (⏳); Bank B compares the event's <code>executed_at</code> timestamp and rejects stale overwrites.`
-            : `Both banks are <b>down</b>; every delivery fails and queues as a retry with exponential backoff (watch scene 2's timeline). ` +
+            : `Both banks are <b>down</b>; every delivery fails and queues as a retry with exponential backoff (watch the timeline below). ` +
               `Click again to restore and watch old retries race fresh trades.`);
         });
       });
