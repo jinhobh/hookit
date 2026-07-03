@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -132,10 +132,76 @@ class RedriveResponse(BaseModel):
     status: str | None
 
 
+class BurstRequest(BaseModel):
+    """Optional body for POST /showcase/burst.
+
+    ``same_account=true`` asks the producer for concurrent ``trade.executed``
+    events against one account — the ledger demo's lost-update scenario —
+    instead of a tick spike.
+    """
+
+    same_account: bool = False
+
+
 class BurstResponse(BaseModel):
     """Returned by POST /showcase/burst."""
 
     published: int
+
+
+class LedgerAccountItem(BaseModel):
+    """One account at one bank, diffed against the platform's event log.
+
+    Dollar values are serialized as strings (exact decimals, never floats) —
+    a nonzero ``drift`` means the bank really lost or invented money.
+    """
+
+    account: str
+    balance: str
+    expected: str
+    drift: str
+    reconciled: bool
+    status: str | None = None
+    status_as_of: datetime | None = None
+    status_stale: bool
+
+
+class LedgerBankItem(BaseModel):
+    """One bank's reconciliation state plus its recent received-request tail."""
+
+    bank: str
+    endpoint_id: uuid.UUID
+    mode: str
+    total_drift: str
+    reconciled: bool
+    pending_deliveries: int
+    dead_lettered_deliveries: int
+    accounts: list[LedgerAccountItem]
+    tail: list[ReceivedRequestItem]
+
+
+class LedgerResponse(BaseModel):
+    """Returned by GET /showcase/ledger — the two-banks reconciliation meter."""
+
+    server_time: datetime
+    starting_balance: str
+    trade_count: int
+    banks: list[LedgerBankItem]
+
+
+class LedgerHealthRequest(BaseModel):
+    """Body for POST /showcase/ledger/health — one bank's health toggle."""
+
+    bank: Literal["naive", "safe"]
+    mode: Literal["healthy", "flaky", "down"]
+
+
+class LedgerHealthResponse(BaseModel):
+    """Returned by POST /showcase/ledger/health."""
+
+    bank: str
+    endpoint_id: uuid.UUID
+    mode: str
 
 
 class DuplicateResult(BaseModel):

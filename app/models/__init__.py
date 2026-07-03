@@ -7,7 +7,12 @@ required for Alembic autogenerate to detect schema changes.
 from app.models.api_key import ApiKey, generate_api_key
 from app.models.delivery import Delivery, DeliveryStatus
 from app.models.delivery_attempt import DeliveryAttempt
-from app.models.demo import DemoReceivedRequest, DemoReceiverHealth
+from app.models.demo import (
+    DemoLedgerAccount,
+    DemoLedgerProcessed,
+    DemoReceivedRequest,
+    DemoReceiverHealth,
+)
 from app.models.endpoint import Endpoint, EndpointStatus
 from app.models.event import Event
 from app.models.idempotency import IdempotencyRecord
@@ -18,6 +23,8 @@ __all__ = [
     "Delivery",
     "DeliveryAttempt",
     "DeliveryStatus",
+    "DemoLedgerAccount",
+    "DemoLedgerProcessed",
     "DemoReceivedRequest",
     "DemoReceiverHealth",
     "Endpoint",

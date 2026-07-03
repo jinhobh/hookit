@@ -14,6 +14,7 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from producer.prices import DEFAULT_SYMBOLS
+from producer.trades import DEFAULT_ACCOUNTS
 
 
 class ProducerSettings(BaseSettings):
@@ -58,6 +59,21 @@ class ProducerSettings(BaseSettings):
         le=200,
         description="How many rapid tick events one /burst request fires.",
     )
+    trade_interval_seconds: float = Field(
+        default=6.0,
+        ge=1.0,
+        description="Seconds between trade.executed emissions (the two-banks ledger demo).",
+    )
+    trade_accounts: str = Field(
+        default=",".join(DEFAULT_ACCOUNTS),
+        description="Comma-separated demo account names the trade stream is spread across.",
+    )
+    trade_burst_count: int = Field(
+        default=8,
+        ge=2,
+        le=50,
+        description="How many concurrent same-account trades one /burst?same_account fires.",
+    )
     request_timeout_seconds: float = Field(
         default=10.0,
         description="HTTP timeout for both upstream price fetches and event publishing.",
@@ -81,6 +97,11 @@ class ProducerSettings(BaseSettings):
     def symbol_list(self) -> list[str]:
         """Parsed, trimmed, non-empty symbols."""
         return [s.strip() for s in self.symbols.split(",") if s.strip()]
+
+    @property
+    def account_list(self) -> list[str]:
+        """Parsed, trimmed, non-empty demo trade accounts."""
+        return [a.strip() for a in self.trade_accounts.split(",") if a.strip()]
 
 
 @lru_cache(maxsize=1)
