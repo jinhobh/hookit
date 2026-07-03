@@ -642,6 +642,100 @@ def test_list_deliveries_created_after_after_created_before_returns_422(
     assert "created_after" in resp.json()["detail"]
 
 
+def _make_event_of_type(session: Session, project_id: object, event_type: str) -> Event:
+    event = Event(
+        project_id=project_id,
+        type=event_type,
+        payload={"x": 1},
+    )
+    session.add(event)
+    session.flush()
+    return event
+
+
+def test_list_deliveries_filter_by_event_type(client: TestClient, dl_db_session: Session) -> None:
+    project, key = _make_project_and_key(dl_db_session, "project-dl-filter-etype")
+    endpoint = _make_endpoint(dl_db_session, project.id)
+
+    event_paid = _make_event_of_type(dl_db_session, project.id, "order.paid")
+    delivery_paid = _make_delivery(dl_db_session, event_paid, endpoint)
+
+    event_shipped = _make_event_of_type(dl_db_session, project.id, "order.shipped")
+    delivery_shipped = _make_delivery(dl_db_session, event_shipped, endpoint)
+
+    resp = client.get("/deliveries?event_type=order.paid", headers=_auth(key))
+    assert resp.status_code == 200
+    ids = {item["id"] for item in resp.json()["items"]}
+    assert str(delivery_paid.id) in ids
+    assert str(delivery_shipped.id) not in ids
+
+
+def test_list_deliveries_filter_by_event_type_and_status(
+    client: TestClient, dl_db_session: Session
+) -> None:
+    project, key = _make_project_and_key(dl_db_session, "project-dl-etype-status")
+    endpoint = _make_endpoint(dl_db_session, project.id)
+
+    event = _make_event_of_type(dl_db_session, project.id, "order.paid")
+    pending_delivery = _make_delivery(dl_db_session, event, endpoint)
+
+    endpoint2 = _make_endpoint(dl_db_session, project.id)
+    succeeded_delivery = _make_delivery(dl_db_session, event, endpoint2)
+    succeeded_delivery.status = DeliveryStatus.succeeded
+    dl_db_session.flush()
+
+    resp = client.get("/deliveries?event_type=order.paid&status=pending", headers=_auth(key))
+    assert resp.status_code == 200
+    ids = {item["id"] for item in resp.json()["items"]}
+    assert str(pending_delivery.id) in ids
+    assert str(succeeded_delivery.id) not in ids
+
+
+def test_list_deliveries_filter_by_event_type_no_match_returns_empty(
+    client: TestClient, dl_db_session: Session
+) -> None:
+    project, key = _make_project_and_key(dl_db_session, "project-dl-etype-nomatch")
+    endpoint = _make_endpoint(dl_db_session, project.id)
+    event = _make_event_of_type(dl_db_session, project.id, "order.paid")
+    _make_delivery(dl_db_session, event, endpoint)
+
+    resp = client.get("/deliveries?event_type=order.refunded", headers=_auth(key))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["items"] == []
+    assert data["next_cursor"] is None
+
+
+def test_list_deliveries_filter_by_event_type_with_pagination(
+    client: TestClient, dl_db_session: Session
+) -> None:
+    project, key = _make_project_and_key(dl_db_session, "project-dl-etype-page")
+    endpoint = _make_endpoint(dl_db_session, project.id)
+
+    for _ in range(5):
+        event = _make_event_of_type(dl_db_session, project.id, "order.paid")
+        _make_delivery(dl_db_session, event, endpoint)
+
+    # one delivery with a different event type that should be excluded
+    event_other = _make_event_of_type(dl_db_session, project.id, "order.shipped")
+    _make_delivery(dl_db_session, event_other, endpoint)
+    dl_db_session.flush()
+
+    page1 = client.get("/deliveries?limit=3&event_type=order.paid", headers=_auth(key)).json()
+    assert len(page1["items"]) == 3
+    cursor = page1["next_cursor"]
+    assert cursor is not None
+
+    page2 = client.get(
+        f"/deliveries?limit=3&cursor={cursor}&event_type=order.paid", headers=_auth(key)
+    ).json()
+    assert len(page2["items"]) == 2
+    assert page2["next_cursor"] is None
+
+    all_ids = {item["id"] for item in page1["items"] + page2["items"]}
+    assert len(all_ids) == 5
+
+
 # ---------------------------------------------------------------------------
 # GET /deliveries/{id} tests
 # ---------------------------------------------------------------------------
