@@ -15,6 +15,7 @@ from app.db.session import get_session
 from app.models.delivery import Delivery, DeliveryStatus
 from app.models.delivery_attempt import DeliveryAttempt
 from app.models.endpoint import Endpoint
+from app.models.event import Event
 from app.models.project import Project
 from app.routers._pagination import decode_cursor as _decode_cursor
 from app.routers._pagination import encode_cursor as _encode_cursor
@@ -48,6 +49,7 @@ def list_deliveries(
     status: DeliveryStatus | None = None,
     endpoint_id: uuid.UUID | None = None,
     event_id: uuid.UUID | None = None,
+    event_type: str | None = None,
     created_after: Annotated[datetime | None, Query()] = None,
     created_before: Annotated[datetime | None, Query()] = None,
     project: Project = Depends(get_current_project),
@@ -74,6 +76,9 @@ def list_deliveries(
 
     if event_id is not None:
         stmt = stmt.where(Delivery.event_id == event_id)
+
+    if event_type is not None:
+        stmt = stmt.join(Event, Delivery.event_id == Event.id).where(Event.type == event_type)
 
     if created_after is not None:
         stmt = stmt.where(Delivery.created_at >= created_after)
