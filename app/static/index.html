@@ -335,6 +335,7 @@
 
       /* ---- two-banks ledger ------------------------------------------- */
       .banks { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      .banks > .msg { grid-column: 1 / -1; }
       @media (max-width: 860px) { .banks { grid-template-columns: 1fr; } }
       .bank { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; box-shadow: var(--shadow); }
       .bank-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
