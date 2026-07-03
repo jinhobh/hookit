@@ -43,6 +43,15 @@ def _get_project_or_404(project_id: uuid.UUID, session: Session) -> Project:
     return project
 
 
+def _get_api_key_or_404(project_id: uuid.UUID, key_id: uuid.UUID, session: Session) -> ApiKey:
+    api_key = session.execute(
+        select(ApiKey).where(ApiKey.id == key_id, ApiKey.project_id == project_id)
+    ).scalar_one_or_none()
+    if api_key is None:
+        raise HTTPException(status_code=404, detail="API key not found")
+    return api_key
+
+
 @router.post("", status_code=201, response_model=ProjectResponse)
 def create_project(
     body: ProjectCreate,
@@ -187,6 +196,23 @@ def list_api_keys(
 
     items = [ApiKeyListItem.model_validate(key) for key in page]
     return ApiKeyPageResponse(items=items, next_cursor=next_cursor)
+
+
+@router.get("/{project_id}/api-keys/{key_id}", response_model=ApiKeyListItem)
+def get_api_key(
+    project_id: uuid.UUID,
+    key_id: uuid.UUID,
+    session: Session = Depends(get_session),
+) -> ApiKeyListItem:
+    """Return a single API key's details.
+
+    Admin/bootstrap endpoint — no authentication required in the MVP.
+    Returns 404 if the project does not exist, the key does not exist,
+    or the key belongs to a different project.
+    key_hash is never included in the response.
+    """
+    api_key = _get_api_key_or_404(project_id, key_id, session)
+    return ApiKeyListItem.model_validate(api_key)
 
 
 @router.delete("/{project_id}/api-keys/{key_id}", status_code=204)

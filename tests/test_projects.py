@@ -460,6 +460,61 @@ def test_list_api_keys_key_hash_never_in_response(client: TestClient) -> None:
 
 
 # ---------------------------------------------------------------------------
+# GET /projects/{project_id}/api-keys/{key_id}
+# ---------------------------------------------------------------------------
+
+
+def test_get_api_key_returns_200(client: TestClient) -> None:
+    project_id, key_id, _ = _mint_key(client, "get-key-happy")
+    resp = client.get(f"/projects/{project_id}/api-keys/{key_id}")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["id"] == key_id
+
+
+def test_get_api_key_response_shape(client: TestClient) -> None:
+    """Response must match ApiKeyListItem exactly — no key_hash field."""
+    project_id, key_id, _ = _mint_key(client, "get-key-shape", key_name="shape-key")
+    resp = client.get(f"/projects/{project_id}/api-keys/{key_id}")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert set(data.keys()) == {"id", "prefix", "name", "created_at", "last_used_at", "revoked_at"}
+    assert "key_hash" not in data
+    assert "key" not in data
+    assert data["name"] == "shape-key"
+
+
+def test_get_api_key_nonexistent_key_returns_404(client: TestClient) -> None:
+    project_resp = client.post("/projects", json={"name": "get-key-missing"})
+    project_id = project_resp.json()["id"]
+    fake_key_id = str(uuid.uuid4())
+    resp = client.get(f"/projects/{project_id}/api-keys/{fake_key_id}")
+    assert resp.status_code == 404
+
+
+def test_get_api_key_wrong_project_returns_404(client: TestClient) -> None:
+    """Key from a different project must return 404 (no cross-project info leakage)."""
+    _, key_id, _ = _mint_key(client, "get-key-owner-project")
+    other_project_resp = client.post("/projects", json={"name": "get-key-other-project"})
+    other_project_id = other_project_resp.json()["id"]
+    resp = client.get(f"/projects/{other_project_id}/api-keys/{key_id}")
+    assert resp.status_code == 404
+
+
+def test_get_api_key_nonexistent_project_returns_404(client: TestClient) -> None:
+    fake_project_id = str(uuid.uuid4())
+    fake_key_id = str(uuid.uuid4())
+    resp = client.get(f"/projects/{fake_project_id}/api-keys/{fake_key_id}")
+    assert resp.status_code == 404
+
+
+def test_get_api_key_no_auth_required(client: TestClient) -> None:
+    project_id, key_id, _ = _mint_key(client, "get-key-no-auth")
+    resp = client.get(f"/projects/{project_id}/api-keys/{key_id}")
+    assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
 # GET /projects
 # ---------------------------------------------------------------------------
 
