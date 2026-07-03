@@ -20,6 +20,7 @@
         --slate: #94a3b8;
       }
       * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
       body {
         margin: 0;
         font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -34,12 +35,27 @@
         border-bottom: 1px solid var(--border);
         background: linear-gradient(180deg, #12161f, #0b0e14);
         flex-wrap: wrap;
+        position: sticky;
+        top: 0;
+        z-index: 10;
       }
       .brand { font-weight: 700; letter-spacing: 0.5px; font-size: 16px; }
       .brand span { color: var(--accent); }
       .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; }
       .dot.live { background: var(--green); box-shadow: 0 0 8px var(--green); }
+      .live-label { color: var(--muted); font-size: 12px; }
+      body.live .live-label { color: var(--green); }
       .spacer { flex: 1; }
+      nav.scenes-nav { display: flex; gap: 6px; flex-wrap: wrap; }
+      nav.scenes-nav a {
+        color: var(--muted);
+        text-decoration: none;
+        font-size: 12px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 4px 11px;
+      }
+      nav.scenes-nav a:hover { color: var(--text); border-color: var(--accent); }
       input {
         background: var(--panel-2);
         border: 1px solid var(--border);
@@ -56,10 +72,13 @@
         border-radius: 8px;
         padding: 7px 14px;
         cursor: pointer;
+        font: inherit;
+        font-weight: 600;
       }
       button.ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
       button.danger { background: var(--red); }
       button:disabled { opacity: 0.5; cursor: default; }
+      button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       main { padding: 22px; max-width: 1300px; margin: 0 auto; }
 
       details.adv { color: var(--muted); }
@@ -68,33 +87,165 @@
       details.adv .adv-body { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
       details.adv input#base { width: 260px; }
 
-      .dup-note { margin: 12px 0 0; font-size: 12.5px; color: var(--muted); }
-      .dup-note b { color: var(--green); }
-      .dup-note b.bad { color: var(--red); }
+      .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; }
+      code { background: var(--panel-2); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; font-size: 12px; color: var(--blue); font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+      .msg { color: var(--muted); padding: 30px; text-align: center; }
+      .msg.error { color: var(--red); }
 
-      .console {
+      /* ---- hero: what is this page ---------------------------------- */
+      .hero { padding: 34px 0 10px; }
+      .eyebrow {
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        font-size: 11px;
+        letter-spacing: 2.5px;
+        color: var(--accent);
+        text-transform: uppercase;
+        margin: 0 0 12px;
+      }
+      .hero h1 {
+        font-size: clamp(24px, 3.6vw, 38px);
+        line-height: 1.15;
+        letter-spacing: -0.5px;
+        margin: 0 0 12px;
+        max-width: 760px;
+      }
+      .hero .lede {
+        color: var(--muted);
+        font-size: 15px;
+        max-width: 760px;
+        margin: 0 0 24px;
+      }
+      .hero .lede strong { color: var(--text); }
+
+      /* the live pipeline map — orientation, status, and navigation in one */
+      .map {
+        display: flex;
+        align-items: stretch;
+        gap: 14px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 18px 20px;
+        margin-bottom: 14px;
+      }
+      .mnode {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--panel-2);
+        padding: 12px 14px;
+        min-width: 170px;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        justify-content: center;
+      }
+      .mnode .mtitle { font-family: ui-monospace, Menlo, monospace; font-size: 11px; letter-spacing: 1.5px; color: var(--slate); }
+      .mnode.core .mtitle { color: var(--accent); }
+      .mnode .msub { font-size: 12.5px; }
+      .mnode .mstat { color: var(--muted); font-size: 11.5px; }
+      .mflow {
+        flex: 1;
+        min-width: 34px;
+        align-self: center;
+        height: 2px;
+        background: repeating-linear-gradient(90deg, var(--accent) 0 8px, transparent 8px 16px);
+        opacity: 0.3;
+      }
+      body.live .mflow { opacity: 0.85; animation: flow 0.8s linear infinite; }
+      @keyframes flow { to { background-position: 16px 0; } }
+      .mdests { display: flex; flex-direction: column; gap: 8px; justify-content: center; min-width: 210px; }
+      a.mdest {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--panel-2);
+        padding: 8px 12px;
+        color: var(--text);
+        text-decoration: none;
+        font-size: 12.5px;
+      }
+      a.mdest:hover { border-color: var(--accent); }
+      a.mdest .mnote { color: var(--muted); margin-left: auto; font-size: 11.5px; text-align: right; }
+      a.mdest .mnote.ok { color: var(--green); }
+      a.mdest .mnote.bad { color: var(--red); }
+      a.mdest .mnote.warn { color: var(--amber); }
+      .mdot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+      .mdot.ok { background: var(--green); }
+      .mdot.bad { background: var(--red); }
+      .mdot.warn { background: var(--amber); }
+      .hero .howto { color: var(--muted); font-size: 13px; margin: 0; }
+      .hero .howto b { color: var(--text); }
+
+      @media (max-width: 860px) {
+        .map { flex-direction: column; }
+        .mflow {
+          width: 2px;
+          min-width: 2px;
+          height: 22px;
+          min-height: 22px;
+          flex: none;
+          margin: 0 auto;
+          background: repeating-linear-gradient(180deg, var(--accent) 0 8px, transparent 8px 16px);
+        }
+        body.live .mflow { animation: flow-v 0.8s linear infinite; }
+        @keyframes flow-v { to { background-position: 0 16px; } }
+        .mdests { min-width: 0; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        html { scroll-behavior: auto; }
+        .mflow { animation: none !important; }
+        body.live .mflow { animation: none !important; }
+      }
+
+      /* ---- scenes ----------------------------------------------------- */
+      .scene { margin: 46px 0 0; scroll-margin-top: 76px; }
+      .scene-num {
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        font-size: 11px;
+        letter-spacing: 2.5px;
+        color: var(--accent);
+        text-transform: uppercase;
+      }
+      .scene h2 { font-size: 21px; letter-spacing: -0.3px; margin: 6px 0 8px; }
+      .scene .scene-lede { color: var(--muted); font-size: 13.5px; max-width: 860px; margin: 0 0 16px; }
+      .scene .scene-lede strong { color: var(--text); }
+
+      .actions {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(225px, 1fr));
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+      .action {
         background: var(--panel);
         border: 1px solid var(--border);
         border-radius: 12px;
-        padding: 16px 18px;
-        margin-bottom: 20px;
+        padding: 12px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
       }
-      .console .intro { color: var(--muted); font-size: 13px; margin: 0 0 14px; max-width: 960px; }
-      .console .intro strong { color: var(--text); }
-      .console code { background: var(--panel-2); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; font-size: 12px; color: var(--blue); }
-      .controls { display: flex; gap: 26px; flex-wrap: wrap; align-items: center; }
-      .cgroup { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-      .cg-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 2px; }
+      .action button { align-self: flex-start; }
+      .action p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+      .action[hidden] { display: none; }
+
+      .status-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 14px; color: var(--muted); font-size: 13px; }
       .pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; font-weight: 600; font-size: 13px; border: 1px solid var(--border); }
       .pill.up { color: var(--green); background: rgba(52,211,153,0.12); }
       .pill.down { color: var(--red); background: rgba(248,113,113,0.12); }
-      a.dlq-link { color: var(--red); font-size: 13px; text-decoration: none; border-bottom: 1px dashed var(--red); }
+      .pill.flaky { color: var(--amber); background: rgba(251,191,36,0.14); }
+
+      .note { margin: 0 0 16px; font-size: 12.5px; color: var(--muted); background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px 14px; }
+      .note b { color: var(--green); }
+      .note b.bad { color: var(--red); }
 
       .cards {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
         gap: 12px;
-        margin-bottom: 22px;
+        margin-bottom: 16px;
       }
       .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
       .card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -106,16 +257,12 @@
 
       .grid { display: grid; grid-template-columns: 1.35fr 1fr; gap: 22px; align-items: start; }
       @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
-      .section-title { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 10px 2px; }
-      .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; }
-      .msg { color: var(--muted); padding: 30px; text-align: center; }
-      .msg.error { color: var(--red); }
+      .panel-title { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 10px 2px; }
 
-      /* Two-banks ledger (the centerpiece) */
-      .pill.flaky { color: var(--amber); background: rgba(251,191,36,0.14); }
-      .banks { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+      /* ---- two-banks ledger ------------------------------------------- */
+      .banks { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
       @media (max-width: 980px) { .banks { grid-template-columns: 1fr; } }
-      .bank { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+      .bank { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
       .bank-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
       .bank-name { font-weight: 700; }
       .bank-meter { margin-left: auto; font-weight: 700; font-size: 13px; }
@@ -136,8 +283,8 @@
       .bank-tail .trow .time { margin-left: auto; }
       .bank-backlog { color: var(--muted); font-size: 11.5px; margin-top: 6px; }
 
-      /* Live price feed */
-      .feed { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 22px; }
+      /* ---- live price feed -------------------------------------------- */
+      .feed { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
       .feed-row { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--border); }
       .feed-row:last-child { border-bottom: none; }
       .feed-row .tag { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 2px 7px; border-radius: 999px; }
@@ -151,21 +298,26 @@
       .feed-row .chg.red { color: var(--red); }
       .feed-row .chg.muted { color: var(--muted); }
       .feed-row .time { color: var(--muted); margin-left: auto; }
+      @media (max-width: 560px) {
+        .feed-row { flex-wrap: wrap; row-gap: 2px; }
+        .feed-row .sym, .feed-row .px, .feed-row .chg { min-width: 0; }
+        .msg { padding: 22px 14px; word-break: break-word; }
+      }
 
-      /* Embedded Discord */
+      /* ---- embedded Discord -------------------------------------------- */
       .discord { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
       .discord iframe { width: 100%; height: 560px; border: 0; display: block; }
       .discord .msg { padding: 40px 24px; }
 
-      /* Workers strip */
+      /* ---- workers strip ------------------------------------------------ */
       .workers { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 0 0 10px 2px; }
       .worker-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; font-size: 12px; background: var(--panel); font-family: ui-monospace, Menlo, monospace; }
       .worker-chip .n { color: var(--muted); }
       .wdot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
-      .workers .note { color: var(--muted); font-size: 11.5px; margin-left: 4px; }
+      .workers .note { all: unset; color: var(--muted); font-size: 11.5px; margin-left: 4px; }
       .workers .note code { font-size: 11px; }
 
-      /* Delivery lifecycle timeline */
+      /* ---- delivery lifecycle timeline ---------------------------------- */
       .lifecycle { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 22px; }
       .dl-item { border-bottom: 1px solid var(--border); padding: 10px 14px; }
       .dl-item:last-child { border-bottom: none; }
@@ -189,7 +341,7 @@
       .tl-gap b { color: var(--slate); font-weight: 600; }
       .tl-next { color: var(--amber); font-size: 11.5px; padding: 1px 0 1px 14px; }
 
-      /* Request inbox */
+      /* ---- request inbox ------------------------------------------------ */
       .inbox { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
       .inbox-item { border-bottom: 1px solid var(--border); }
       .inbox-item:last-child { border-bottom: none; }
@@ -208,13 +360,21 @@
       .inbox-body .hdrs { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 12px; white-space: pre-wrap; word-break: break-all; color: var(--slate); }
       .inbox-body .hdrs .hk { color: var(--muted); }
       .inbox-body pre { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 8px 0 0; font-size: 12px; overflow-x: auto; color: var(--text); }
+
+      footer { color: var(--muted); font-size: 12px; text-align: center; padding: 40px 22px 30px; }
     </style>
   </head>
   <body>
     <header>
       <div class="brand">HOOK<span>IT</span> · Live Delivery Console</div>
       <span id="live-dot" class="dot" title="polling status"></span>
+      <span class="live-label" id="live-label">connecting…</span>
       <div class="spacer"></div>
+      <nav class="scenes-nav" aria-label="Scenes">
+        <a href="#scene-1">1 · Live stream</a>
+        <a href="#scene-2">2 · Break the pipeline</a>
+        <a href="#scene-3">3 · Two banks</a>
+      </nav>
       <details class="adv">
         <summary>⚙ Advanced</summary>
         <div class="adv-body">
@@ -225,87 +385,161 @@
     </header>
 
     <main>
-      <section class="console">
-        <p class="intro">
-          <strong>This is live.</strong> A separate <code>producer</code> service polls real
-          crypto prices and POSTs them to this platform's public <code>POST /events</code> API — real
-          traffic from a real client. The platform HMAC-signs each delivery and fans it out to a real
-          <strong>Discord</strong> channel (price alerts, shown on the right) and to a pipeline you
-          control below. Take that pipeline <em>down</em> to watch retries, exponential backoff, and
-          the dead-letter queue on live data; bring it back <em>up</em> and redrive to recover.
+      <!-- ============ HERO: orientation ============ -->
+      <section class="hero">
+        <p class="eyebrow">Live system · nothing on this page is simulated</p>
+        <h1>Watch a webhook platform survive real failures.</h1>
+        <p class="lede">
+          Right now, a producer is publishing <strong>live crypto prices and trades</strong> to this
+          platform's API. HookIt signs every event and delivers it to the receivers below —
+          retrying with exponential backoff until each delivery lands.
+          <strong>Your job is to break things.</strong> The platform's job is to recover.
         </p>
-        <div class="controls">
-          <div class="cgroup">
-            <span class="cg-label">Traffic</span>
-            <button id="burst-btn" title="Ask the producer to fire a rapid burst of events">Generate load ⚡</button>
-            <button id="dup-btn" class="ghost" title="The producer fires the same payload twice at once with one Idempotency-Key — a real race on the ingestion unique constraint">Publish duplicate ×2</button>
+
+        <div class="map" role="group" aria-label="Live pipeline">
+          <div class="mnode">
+            <span class="mtitle">PRODUCER</span>
+            <span class="msub">live market prices &amp; trades</span>
+            <span class="mstat mono" id="map-producer">waiting for events…</span>
           </div>
-          <div class="cgroup">
-            <span class="cg-label">Your pipeline</span>
-            <span id="health-pill" class="pill up">● Healthy</span>
+          <div class="mflow" aria-hidden="true"></div>
+          <div class="mnode core">
+            <span class="mtitle">HOOKIT ENGINE</span>
+            <span class="msub">sign · queue · deliver · retry</span>
+            <span class="mstat mono" id="map-engine">—</span>
+          </div>
+          <div class="mflow" aria-hidden="true"></div>
+          <div class="mdests">
+            <a class="mdest" href="#scene-1"><span class="mdot" id="mdot-discord"></span>Discord channel<span class="mnote" id="map-discord">—</span></a>
+            <a class="mdest" href="#scene-2"><span class="mdot" id="mdot-pipe"></span>Your pipeline<span class="mnote" id="map-pipe">—</span></a>
+            <a class="mdest" href="#scene-3"><span class="mdot" id="mdot-banks"></span>Two demo banks<span class="mnote" id="map-banks">—</span></a>
+          </div>
+        </div>
+        <p class="howto">
+          <b>New here?</b> Follow the three scenes in order — each one breaks something real and
+          shows which guarantee handles it. Click a receiver above to jump straight to it.
+        </p>
+      </section>
+
+      <!-- ============ SCENE 1: the live stream ============ -->
+      <section class="scene" id="scene-1">
+        <span class="scene-num">Scene 1</span>
+        <h2>The live stream</h2>
+        <p class="scene-lede">
+          Every row below is a real event published to <code>POST /events</code> and fanned out by
+          the delivery engine. The Discord channel on the right is a real server receiving the same
+          price alerts, signed and delivered by this platform.
+        </p>
+        <div class="actions">
+          <div class="action">
+            <button id="burst-btn">Generate load ⚡</button>
+            <p>Ask the producer to fire a rapid burst of events through the whole pipeline. Watch the counters and the feed react.</p>
+          </div>
+          <div class="action">
+            <button id="dup-btn" class="ghost">Publish duplicate ×2</button>
+            <p>Two identical POSTs race in at once with one <code>Idempotency-Key</code>. Only one event should exist afterwards — the result appears here.</p>
+          </div>
+        </div>
+        <p id="dup-note" class="note" hidden></p>
+        <div id="cards" class="cards"></div>
+        <div class="grid">
+          <div>
+            <p class="panel-title">Live events · published to <code>POST /events</code></p>
+            <div id="feed-wrap" class="feed">
+              <p class="msg">No events yet. The producer publishes every few seconds — if this stays empty, the producer service isn't running (<code>python -m producer</code>).</p>
+            </div>
+          </div>
+          <div>
+            <p class="panel-title">Real Discord channel · the same alerts, delivered</p>
+            <div id="discord-wrap" class="discord">
+              <p class="msg">Discord embed not configured. Set <code>DISCORD_WIDGET_SERVER_ID</code> and <code>DISCORD_WIDGET_CHANNEL_ID</code>.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ SCENE 2: break the pipeline ============ -->
+      <section class="scene" id="scene-2">
+        <span class="scene-num">Scene 2</span>
+        <h2>Break your pipeline — watch retries, backoff, and the dead-letter queue</h2>
+        <p class="scene-lede">
+          One of the receivers is a pipeline <strong>you control</strong>. Take it down and every
+          delivery starts failing for real: the timeline below shows each attempt, the measured
+          backoff gap between attempts, and the live countdown to the next retry. Give up after
+          enough attempts and a delivery is <strong>dead-lettered</strong> — bring the pipeline
+          back and redrive it to recover.
+        </p>
+        <p class="status-line">Your pipeline is <span id="health-pill" class="pill up">● Healthy</span></p>
+        <div class="actions">
+          <div class="action">
             <button id="health-btn" class="danger">Bring pipeline down</button>
-            <button id="forge-btn" class="ghost" title="POST an unsigned payload straight to your receiver from this browser — watch it get rejected 401">Send forged request 🕵</button>
-            <a id="force-dlq" class="dlq-link" href="#" hidden>force one to dead-letter →</a>
-            <a id="redrive-link" class="dlq-link" href="#" hidden style="color: var(--accent); border-color: var(--accent);">redrive dead-letters →</a>
+            <p>Your receiver starts answering 503. Deliveries fail and retry with exponential backoff — watch the timeline fill up.</p>
+          </div>
+          <div class="action">
+            <button id="forge-btn" class="ghost">Send forged request 🕵</button>
+            <p>POST an unsigned payload straight to your receiver from this browser. The HMAC check rejects it — it lands in the inbox as <code>401</code>.</p>
+          </div>
+          <div class="action" id="force-dlq-wrap" hidden>
+            <button id="force-dlq" class="ghost">Force one to dead-letter →</button>
+            <p>Impatient? Fast-forward one failing delivery through its remaining retries so it dead-letters now.</p>
+          </div>
+          <div class="action" id="redrive-wrap" hidden>
+            <button id="redrive-link">Redrive dead-letters ↻</button>
+            <p>Requeue every dead-lettered delivery through the normal path — now that the pipeline is healthy, they succeed.</p>
           </div>
         </div>
-        <p id="dup-note" class="dup-note" hidden></p>
+        <p class="panel-title">Delivery lifecycle · every attempt, backoff gap, and lease — straight from the engine's own rows</p>
+        <div id="workers-strip" class="workers" hidden></div>
+        <div id="lifecycle-wrap" class="lifecycle">
+          <p class="msg">Recent deliveries to your pipeline appear here with their full retry history.</p>
+        </div>
+        <p class="panel-title">Your pipeline's inbox · signed requests received</p>
+        <div id="inbox-wrap" class="inbox">
+          <p class="msg">Nothing received yet — deliveries that reach your endpoint show up here with their real HMAC signature.</p>
+        </div>
       </section>
 
-      <section class="console">
-        <p class="intro">
-          <strong>One event stream, two banks.</strong> The producer also emits real
-          <code>trade.executed</code> events, and this platform fans each one out to both banks
-          below through the same delivery engine — at-least-once, HMAC-signed, with a stable
-          <code>event_id</code>, a timestamp, and an attempt counter on every delivery.
-          <strong>Bank A</strong> applies every webhook as it arrives: no signature check, no
-          dedupe, no locking. <strong>Bank B</strong> uses the delivery metadata the way a correct
-          receiver should. The meter continuously diffs both ledgers against the balances computed
-          from the platform's own event log. Break the world below; watch who stays solvent.
+      <!-- ============ SCENE 3: two banks ============ -->
+      <section class="scene" id="scene-3">
+        <span class="scene-num">Scene 3 · the payoff</span>
+        <h2>One event stream, two banks — only one stays solvent</h2>
+        <p class="scene-lede">
+          The platform delivers the same signed <code>trade.executed</code> events to two bank
+          applications. <strong>Bank A</strong> trusts whatever arrives: no signature check, no
+          dedupe, no locking. <strong>Bank B</strong> uses the delivery metadata — stable
+          <code>event_id</code>, signed timestamp, HMAC — the way a correct receiver should. The
+          meter on each bank continuously diffs its ledger against the platform's own event log.
+          Break the world with the buttons below and watch who bleeds money.
         </p>
-        <div class="controls">
-          <div class="cgroup">
-            <span class="cg-label">Chaos</span>
-            <button id="lostack-btn" class="danger" title="Both banks keep processing webhooks but stop acknowledging them — the platform retries, redelivering trades that were already applied">Drop acks 📉</button>
-            <button id="storm-btn" title="The producer fires concurrent trades against ONE account — parallel workers deliver them overlapping">Trade storm 🌊</button>
-            <button id="timetravel-btn" class="ghost" title="Take both banks down so deliveries queue as retries, then restore — retries arrive interleaved with fresh trades, out of order">Pull the plug 🔌</button>
-            <button id="forge-ledger-btn" class="ghost" title="POST an unsigned fake trade straight at both banks from this browser">Forge a trade 🕵</button>
+        <div class="actions">
+          <div class="action">
+            <button id="lostack-btn" class="danger">Drop acks 📉</button>
+            <p>Both banks keep processing webhooks but stop acknowledging them, so the platform retries. Bank A credits the same trade twice; Bank B dedupes on <code>event_id</code>.</p>
+          </div>
+          <div class="action">
+            <button id="storm-btn">Trade storm 🌊</button>
+            <p>Concurrent trades hit one account across parallel workers. Bank A's read-modify-write loses an update; Bank B's row lock keeps the exact total.</p>
+          </div>
+          <div class="action">
+            <button id="timetravel-btn" class="ghost">Pull the plug 🔌</button>
+            <p>Take both banks down so deliveries queue as retries, then restore. Old retries arrive mixed with fresh trades — Bank B rejects stale overwrites by timestamp.</p>
+          </div>
+          <div class="action">
+            <button id="forge-ledger-btn" class="ghost">Forge a trade 🕵</button>
+            <p>POST an unsigned $5,000 trade straight at both banks from this browser. Bank A books money that never existed; Bank B's HMAC check answers 401.</p>
           </div>
         </div>
-        <p id="ledger-note" class="dup-note" hidden></p>
+        <p id="ledger-note" class="note" hidden></p>
         <div id="banks-wrap" class="banks">
-          <p class="msg">Waiting for the first trades… is <code>python -m producer</code> running?</p>
+          <p class="msg">Waiting for the first trades… if this stays empty, the producer service isn't running (<code>python -m producer</code>).</p>
         </div>
       </section>
-
-      <div id="cards" class="cards"></div>
-
-      <p class="section-title">Live price feed · real events published to <code>POST /events</code></p>
-      <div id="feed-wrap" class="feed">
-        <p class="msg">Waiting for the producer's first ticks…</p>
-      </div>
-
-      <p class="section-title">Delivery lifecycle · every attempt, backoff gap, and lease — straight from the engine's own rows</p>
-      <div id="workers-strip" class="workers" hidden></div>
-      <div id="lifecycle-wrap" class="lifecycle">
-        <p class="msg">Recent deliveries to your pipeline appear here with their full retry history.</p>
-      </div>
-
-      <div class="grid">
-        <div>
-          <p class="section-title">Your pipeline's inbox · signed requests received</p>
-          <div id="inbox-wrap" class="inbox">
-            <p class="msg">Deliveries that reach your endpoint show up here — with their real signature.</p>
-          </div>
-        </div>
-        <div>
-          <p class="section-title">Real Discord channel · price alerts delivered live</p>
-          <div id="discord-wrap" class="discord">
-            <p class="msg">Discord embed not configured. Set <code>DISCORD_WIDGET_SERVER_ID</code> and <code>DISCORD_WIDGET_CHANNEL_ID</code>.</p>
-          </div>
-        </div>
-      </div>
     </main>
+
+    <footer>
+      Every failure on this page is injected into the running system; every recovery is the
+      production delivery code doing its job.
+    </footer>
 
     <script>
       const $ = (id) => document.getElementById(id);
@@ -393,9 +627,8 @@
         });
       });
 
-      $("force-dlq").addEventListener("click", (e) => {
-        e.preventDefault();
-        act(null, null, async () => {
+      $("force-dlq").addEventListener("click", () => {
+        act($("force-dlq"), "Fast-forwarding…", async () => {
           try { await api("/showcase/dead-letter", { method: "POST" }); }
           catch (err) {
             if (err.status === 409) { alert("Bring the pipeline down first."); return; }
@@ -416,9 +649,8 @@
           // Success is the rejection: it shows in the inbox as ✗ unsigned → 401.
         }));
 
-      $("redrive-link").addEventListener("click", (e) => {
-        e.preventDefault();
-        act(null, null, async () => {
+      $("redrive-link").addEventListener("click", () => {
+        act($("redrive-link"), "Redriving…", async () => {
           await api("/showcase/redrive", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -464,7 +696,7 @@
           ledgerNote(restoring
             ? `Banks are back. Queued retries now arrive <b>interleaved with fresh trades — out of order</b>. Bank A stamps ` +
               `"last trade" by arrival order and shows stale state (⏳); Bank B compares the event's <code>executed_at</code> timestamp and rejects stale overwrites.`
-            : `Both banks are <b>down</b>; every delivery fails and queues as a retry with exponential backoff (watch the timeline below). ` +
+            : `Both banks are <b>down</b>; every delivery fails and queues as a retry with exponential backoff (watch scene 2's timeline). ` +
               `Click again to restore and watch old retries race fresh trades.`);
         });
       });
@@ -580,13 +812,48 @@
         if (health) {
           pill.className = "pill up"; pill.textContent = "● Healthy";
           btn.textContent = "Bring pipeline down"; btn.className = "danger";
-          $("force-dlq").hidden = true;
+          $("force-dlq-wrap").hidden = true;
         } else {
           pill.className = "pill down"; pill.textContent = "● Down";
           btn.textContent = "Restore pipeline"; btn.className = "";
-          $("force-dlq").hidden = false;
+          $("force-dlq-wrap").hidden = false;
         }
-        $("redrive-link").hidden = dlqDepth === 0;
+        $("redrive-wrap").hidden = dlqDepth === 0;
+      }
+
+      // ---- hero pipeline map -----------------------------------------------
+      function setMapDest(dotId, noteId, cls, text) {
+        $(dotId).className = "mdot " + cls;
+        const note = $(noteId);
+        note.className = "mnote " + cls;
+        note.textContent = text;
+      }
+      function renderMap(summary, feed) {
+        const latest = feed.events[0];
+        $("map-producer").textContent = latest
+          ? `last event ${latest.type} · ${fmtTime(latest.created_at)}`
+          : "no events yet";
+        const bits = [`${summary.totals.succeeded} delivered`];
+        if (summary.totals.failed) bits.push(`${summary.totals.failed} retrying`);
+        if (summary.dlq_depth) bits.push(`${summary.dlq_depth} dead-lettered`);
+        $("map-engine").textContent = bits.join(" · ");
+
+        const discordOn = !!(feed.discord_widget_server_id && feed.discord_widget_channel_id);
+        setMapDest("mdot-discord", "map-discord", discordOn ? "ok" : "", discordOn ? "delivering live" : "not configured");
+        setMapDest("mdot-pipe", "map-pipe", feed.healthy ? "ok" : "bad",
+          feed.healthy ? "healthy" : "down — retrying");
+
+        if (ledgerData && ledgerData.banks.length) {
+          const naive = ledgerData.banks.find((b) => b.bank === "naive");
+          const syncing = ledgerData.banks.some((b) => b.pending_deliveries > 0);
+          if (naive && !naive.reconciled && !syncing) {
+            setMapDest("mdot-banks", "map-banks", "bad", `Bank A drifting ${fmtMoney(naive.total_drift)}`);
+          } else if (syncing) {
+            setMapDest("mdot-banks", "map-banks", "warn", "syncing after failures");
+          } else {
+            setMapDest("mdot-banks", "map-banks", "ok", "both reconciled");
+          }
+        }
       }
 
       // ---- advanced (self-host base override) ----------------------------
@@ -645,7 +912,7 @@
       function renderFeed(events) {
         $("feed-wrap").innerHTML = events.length
           ? events.map(feedRow).join("")
-          : `<p class="msg">Waiting for the producer's first ticks… is <code>python -m producer</code> running?</p>`;
+          : `<p class="msg">No events yet. The producer publishes every few seconds — if this stays empty, the producer service isn't running (<code>python -m producer</code>).</p>`;
       }
 
       // ---- rendering: delivery lifecycle timeline -------------------------
@@ -763,7 +1030,7 @@
       function renderInbox(items) {
         $("inbox-wrap").innerHTML = items.length
           ? items.map(inboxItem).join("")
-          : `<p class="msg">Nothing received yet — the producer's ticks land here with their real signature.</p>`;
+          : `<p class="msg">Nothing received yet — deliveries that reach your endpoint show up here with their real HMAC signature.</p>`;
         $("inbox-wrap").querySelectorAll("[data-inbox]").forEach((el) =>
           el.addEventListener("click", () => {
             const id = el.dataset.inbox;
@@ -784,6 +1051,11 @@
       }
 
       // ---- polling -------------------------------------------------------
+      function setLive(on) {
+        $("live-dot").classList.toggle("live", on);
+        document.body.classList.toggle("live", on);
+        $("live-label").textContent = on ? "live — polling every 2s" : "offline";
+      }
       async function refresh() {
         try {
           const [summary, feed, dels, ledger] = await Promise.all([
@@ -803,9 +1075,10 @@
           renderInbox(feed.inbox);
           ensureDiscord(feed);
           health = feed.healthy; renderHealth();
-          $("live-dot").classList.add("live");
+          renderMap(summary, feed);
+          setLive(true);
         } catch (e) {
-          $("live-dot").classList.remove("live");
+          setLive(false);
           $("feed-wrap").innerHTML = `<p class="msg error">Could not reach the showcase API (${e.status ? "HTTP " + e.status : e.message}).</p>`;
         }
       }
