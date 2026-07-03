@@ -8,6 +8,7 @@ that is rolled back on teardown, providing full isolation.
 from __future__ import annotations
 
 from collections.abc import Generator
+from datetime import UTC, datetime
 
 import pytest
 from app.db.base import Base
@@ -15,6 +16,7 @@ from app.db.session import get_session
 from app.main import app
 from app.models.api_key import ApiKey, generate_api_key
 from app.models.endpoint import Endpoint, EndpointStatus
+from app.models.event import Event
 from app.models.project import Project
 from fastapi.testclient import TestClient
 from sqlalchemy.engine import Engine
@@ -564,6 +566,153 @@ def test_list_events_limit_too_large_returns_422(client: TestClient, project_key
 def test_list_events_limit_zero_returns_422(client: TestClient, project_key: str) -> None:
     resp = client.get("/events?limit=0", headers=_auth(project_key))
     assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# GET /events — created_after / created_before filters
+# ---------------------------------------------------------------------------
+
+
+def _make_event_at(session: Session, project_id: object, ts: datetime) -> Event:
+    event = Event(project_id=project_id, type="order.created", payload={})
+    session.add(event)
+    session.flush()
+    event.created_at = ts
+    session.flush()
+    return event
+
+
+def test_list_events_filter_created_after(client: TestClient, ev_db_session: Session) -> None:
+    project, key = _make_project_and_key(ev_db_session, "project-ev-created-after")
+
+    t_old = datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC)
+    t_new = datetime(2024, 6, 1, 0, 0, 0, tzinfo=UTC)
+
+    old_event = _make_event_at(ev_db_session, project.id, t_old)
+    new_event = _make_event_at(ev_db_session, project.id, t_new)
+
+    resp = client.get("/events?created_after=2024-03-01T00:00:00Z", headers=_auth(key))
+    assert resp.status_code == 200
+    ids = {item["id"] for item in resp.json()["items"]}
+    assert str(new_event.id) in ids
+    assert str(old_event.id) not in ids
+
+
+def test_list_events_filter_created_before(client: TestClient, ev_db_session: Session) -> None:
+    project, key = _make_project_and_key(ev_db_session, "project-ev-created-before")
+
+    t_old = datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC)
+    t_new = datetime(2024, 6, 1, 0, 0, 0, tzinfo=UTC)
+
+    old_event = _make_event_at(ev_db_session, project.id, t_old)
+    new_event = _make_event_at(ev_db_session, project.id, t_new)
+
+    resp = client.get("/events?created_before=2024-03-01T00:00:00Z", headers=_auth(key))
+    assert resp.status_code == 200
+    ids = {item["id"] for item in resp.json()["items"]}
+    assert str(old_event.id) in ids
+    assert str(new_event.id) not in ids
+
+
+def test_list_events_filter_created_after_and_before(
+    client: TestClient, ev_db_session: Session
+) -> None:
+    project, key = _make_project_and_key(ev_db_session, "project-ev-created-range")
+
+    t_before = datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC)
+    t_in_range = datetime(2024, 4, 1, 0, 0, 0, tzinfo=UTC)
+    t_after = datetime(2024, 8, 1, 0, 0, 0, tzinfo=UTC)
+
+    e_before = _make_event_at(ev_db_session, project.id, t_before)
+    e_in = _make_event_at(ev_db_session, project.id, t_in_range)
+    e_after = _make_event_at(ev_db_session, project.id, t_after)
+
+    resp = client.get(
+        "/events?created_after=2024-02-01T00:00:00Z&created_before=2024-06-01T00:00:00Z",
+        headers=_auth(key),
+    )
+    assert resp.status_code == 200
+    ids = {item["id"] for item in resp.json()["items"]}
+    assert str(e_in.id) in ids
+    assert str(e_before.id) not in ids
+    assert str(e_after.id) not in ids
+
+
+def test_list_events_created_after_after_created_before_returns_422(
+    client: TestClient, ev_db_session: Session
+) -> None:
+    _, key = _make_project_and_key(ev_db_session, "project-ev-range-invalid")
+    resp = client.get(
+        "/events?created_after=2024-06-01T00:00:00Z&created_before=2024-01-01T00:00:00Z",
+        headers=_auth(key),
+    )
+    assert resp.status_code == 422
+    assert "created_after" in resp.json()["detail"]
+
+
+def test_list_events_created_range_combined_with_event_type(
+    client: TestClient, ev_db_session: Session
+) -> None:
+    project, key = _make_project_and_key(ev_db_session, "project-ev-range-type")
+
+    t_old = datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC)
+    t_new = datetime(2024, 6, 1, 0, 0, 0, tzinfo=UTC)
+
+    e_match = _make_event_at(ev_db_session, project.id, t_new)
+    e_match.type = "order.created"
+
+    e_wrong_type = _make_event_at(ev_db_session, project.id, t_new)
+    e_wrong_type.type = "order.updated"
+
+    e_wrong_time = _make_event_at(ev_db_session, project.id, t_old)
+    e_wrong_time.type = "order.created"
+    ev_db_session.flush()
+
+    resp = client.get(
+        "/events?event_type=order.created&created_after=2024-03-01T00:00:00Z",
+        headers=_auth(key),
+    )
+    assert resp.status_code == 200
+    ids = {item["id"] for item in resp.json()["items"]}
+    assert str(e_match.id) in ids
+    assert str(e_wrong_type.id) not in ids
+    assert str(e_wrong_time.id) not in ids
+
+
+def test_list_events_created_range_with_pagination(
+    client: TestClient, ev_db_session: Session
+) -> None:
+    project, key = _make_project_and_key(ev_db_session, "project-ev-range-page")
+
+    base = datetime(2024, 6, 1, tzinfo=UTC)
+    events = []
+    for i in range(5):
+        e = _make_event_at(ev_db_session, project.id, base.replace(day=i + 1))
+        events.append(e)
+
+    e_out = _make_event_at(ev_db_session, project.id, datetime(2024, 1, 1, tzinfo=UTC))
+
+    after = "2024-05-01T00:00:00Z"
+    before = "2024-07-01T00:00:00Z"
+
+    page1 = client.get(
+        f"/events?limit=3&created_after={after}&created_before={before}",
+        headers=_auth(key),
+    ).json()
+    assert len(page1["items"]) == 3
+    cursor = page1["next_cursor"]
+    assert cursor is not None
+
+    page2 = client.get(
+        f"/events?limit=3&cursor={cursor}&created_after={after}&created_before={before}",
+        headers=_auth(key),
+    ).json()
+    assert len(page2["items"]) == 2
+    assert page2["next_cursor"] is None
+
+    all_ids = {item["id"] for item in page1["items"] + page2["items"]}
+    assert str(e_out.id) not in all_ids
+    assert len(all_ids) == 5
 
 
 # ---------------------------------------------------------------------------

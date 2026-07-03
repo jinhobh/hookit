@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -52,16 +53,30 @@ def list_events(
     limit: Annotated[int, Query(ge=1, le=_MAX_LIMIT)] = _DEFAULT_LIMIT,
     cursor: str | None = None,
     event_type: str | None = None,
+    created_after: Annotated[datetime | None, Query()] = None,
+    created_before: Annotated[datetime | None, Query()] = None,
     project: Project = Depends(get_current_project),
     session: Session = Depends(get_session),
 ) -> EventListResponse:
     """List events for the authenticated project with keyset cursor pagination."""
+    if created_after is not None and created_before is not None and created_after > created_before:
+        raise HTTPException(
+            status_code=422,
+            detail="created_after must not be after created_before",
+        )
+
     stmt = (
         select(Event).options(selectinload(Event.deliveries)).where(Event.project_id == project.id)
     )
 
     if event_type is not None:
         stmt = stmt.where(Event.type == event_type)
+
+    if created_after is not None:
+        stmt = stmt.where(Event.created_at >= created_after)
+
+    if created_before is not None:
+        stmt = stmt.where(Event.created_at <= created_before)
 
     if cursor is not None:
         cursor_created_at, cursor_id = decode_cursor(cursor)
