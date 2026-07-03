@@ -359,7 +359,7 @@
 
       /* ---- live message feed ------------------------------------------ */
       .feed { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); }
-      .feed-row { display: flex; align-items: center; gap: 12px; padding: 9px 15px; border-bottom: 1px solid var(--line); }
+      .feed-row { display: flex; align-items: center; gap: 12px; padding: 9px 15px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
       .feed-row:last-child { border-bottom: none; }
       .feed-row .tag { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 2px 8px; border-radius: 999px; }
       .feed-row .tag.tick { color: var(--muted); background: var(--paper); }
@@ -544,13 +544,13 @@
           <div class="mnode">
             <span class="mtitle">THE SENDER</span>
             <span class="msub">a demo trading app</span>
-            <span class="mstat mono" id="map-producer">waiting for the first message…</span>
+            <span class="mstat" id="map-producer">waiting for the first message…</span>
           </div>
           <div class="mflow" aria-hidden="true"></div>
           <div class="mnode core">
             <span class="mtitle">HOOKIT</span>
             <span class="msub">seals, queues, and delivers every message</span>
-            <span class="mstat mono" id="map-engine">—</span>
+            <span class="mstat" id="map-engine">—</span>
           </div>
           <div class="mflow" aria-hidden="true"></div>
           <div class="mdests">
@@ -559,7 +559,7 @@
             <a class="mdest" href="#feed"><span class="mdot" id="mdot-discord"></span>A real Discord channel<span class="mnote" id="map-discord">—</span></a>
           </div>
         </div>
-        <p class="pulse mono" id="pulse" hidden></p>
+        <p class="pulse" id="pulse" hidden></p>
         <p class="howto">
           <b>Three short stories below.</b> Each one lets you break something real and watch what
           happens. Click a destination above to jump straight to it.
