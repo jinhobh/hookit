@@ -3,145 +3,197 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>HOOKIT · Live Delivery Console</title>
+    <title>HookIt · Live Demo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&display=swap"
+      rel="stylesheet"
+    />
     <style>
+      /* HookIt Live Demo — parcel-tracking visual system.
+         Warm paper ground, white "shipping label" cards, postal-blue accent,
+         desaturated status colors. Red is reserved for genuine wrongness
+         (money drift, rejected fakes) — an offline receiver is amber. */
       :root {
-        --bg: #0b0e14;
-        --panel: #12161f;
-        --panel-2: #171c28;
-        --border: #232a38;
-        --text: #e6e9ef;
-        --muted: #8a93a6;
-        --accent: #6c8cff;
-        --green: #34d399;
-        --amber: #fbbf24;
-        --red: #f87171;
-        --blue: #60a5fa;
-        --slate: #94a3b8;
+        color-scheme: light;
+        --paper: #f4f2ed;
+        --surface: #ffffff;
+        --ink: #20303c;
+        --muted: #5f6b76;
+        --line: #e4e0d6;
+        --accent: #2b50c7; /* postal blue */
+        --accent-soft: #e8ecf9;
+        --good: #1f7a57;
+        --good-bg: #e3efe8;
+        --wait: #96661a;
+        --wait-bg: #f4ead4;
+        --bad: #b0402f; /* stamp red */
+        --bad-bg: #f6e3df;
+        --display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+        --mono: ui-monospace, "SF Mono", Menlo, monospace;
+        --shadow: 0 1px 2px rgba(32, 48, 60, 0.06);
       }
       * { box-sizing: border-box; }
       html { scroll-behavior: smooth; }
       body {
         margin: 0;
-        font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-        background: var(--bg);
-        color: var(--text);
+        font: 15.5px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        background: var(--paper);
+        color: var(--ink);
       }
+
+      /* ---- header: slim, with the airmail stripe as the brand device ----- */
       header {
         display: flex;
         align-items: center;
         gap: 14px;
-        padding: 14px 22px;
-        border-bottom: 1px solid var(--border);
-        background: linear-gradient(180deg, #12161f, #0b0e14);
+        padding: 14px 24px;
+        border-bottom: 1px solid var(--line);
+        background: var(--surface);
         flex-wrap: wrap;
         position: sticky;
         top: 0;
         z-index: 10;
       }
-      .brand { font-weight: 700; letter-spacing: 0.5px; font-size: 16px; }
+      header::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 5px;
+        background: repeating-linear-gradient(
+          135deg,
+          var(--accent) 0 14px,
+          var(--surface) 14px 28px,
+          var(--bad) 28px 42px
+        );
+      }
+      .brand { font-family: var(--display); font-weight: 700; font-size: 17px; letter-spacing: 0.2px; }
       .brand span { color: var(--accent); }
-      .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; }
-      .dot.live { background: var(--green); box-shadow: 0 0 8px var(--green); }
-      .live-label { color: var(--muted); font-size: 12px; }
-      body.live .live-label { color: var(--green); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); display: inline-block; }
+      .dot.live { background: var(--good); animation: breathe 2.4s ease-in-out infinite; }
+      @keyframes breathe { 50% { box-shadow: 0 0 0 4px rgba(31, 122, 87, 0.18); } }
+      .live-label { color: var(--muted); font-size: 12.5px; }
+      body.live .live-label { color: var(--good); }
       .spacer { flex: 1; }
       nav.scenes-nav { display: flex; gap: 6px; flex-wrap: wrap; }
       nav.scenes-nav a {
         color: var(--muted);
         text-decoration: none;
-        font-size: 12px;
-        border: 1px solid var(--border);
+        font-size: 13px;
+        border: 1px solid var(--line);
         border-radius: 999px;
-        padding: 4px 11px;
+        padding: 5px 13px;
+        background: var(--surface);
       }
-      nav.scenes-nav a:hover { color: var(--text); border-color: var(--accent); }
+      nav.scenes-nav a:hover { color: var(--accent); border-color: var(--accent); }
       input {
-        background: var(--panel-2);
-        border: 1px solid var(--border);
-        color: var(--text);
-        border-radius: 8px;
-        padding: 7px 10px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        color: var(--ink);
+        border-radius: 9px;
+        padding: 8px 11px;
         font: inherit;
+        font-size: 14px;
       }
       button {
         background: var(--accent);
-        border: none;
-        color: #0b0e14;
+        border: 1px solid var(--accent);
+        color: #fff;
         font-weight: 600;
-        border-radius: 8px;
-        padding: 7px 14px;
+        border-radius: 10px;
+        padding: 9px 16px;
         cursor: pointer;
         font: inherit;
+        font-size: 14px;
         font-weight: 600;
       }
-      button.ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
-      button.danger { background: var(--red); }
-      button:disabled { opacity: 0.5; cursor: default; }
-      button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-      main { padding: 22px; max-width: 1300px; margin: 0 auto; }
+      button:hover { filter: brightness(1.08); }
+      button.ghost { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
+      button.ghost:hover { border-color: var(--muted); filter: none; }
+      button.danger { background: var(--surface); color: var(--bad); border: 1.5px solid var(--bad); }
+      button.danger:hover { background: var(--bad-bg); filter: none; }
+      button:disabled { opacity: 0.45; cursor: default; }
+      button:focus-visible, a:focus-visible, summary:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      main { padding: 24px; max-width: 980px; margin: 0 auto; }
 
-      details.adv { color: var(--muted); }
-      details.adv summary { cursor: pointer; font-size: 12px; list-style: none; }
+      details.adv { color: var(--muted); position: relative; }
+      details.adv summary { cursor: pointer; font-size: 12.5px; list-style: none; }
       details.adv summary::-webkit-details-marker { display: none; }
       details.adv .adv-body { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
-      details.adv input#base { width: 260px; }
+      details.adv input#base { width: 240px; }
 
-      .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; }
-      code { background: var(--panel-2); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; font-size: 12px; color: var(--blue); font-family: ui-monospace, "SF Mono", Menlo, monospace; }
-      .msg { color: var(--muted); padding: 30px; text-align: center; }
-      .msg.error { color: var(--red); }
+      .mono { font-family: var(--mono); font-size: 12.5px; }
+      code {
+        background: var(--accent-soft);
+        border-radius: 5px;
+        padding: 1px 5px;
+        font-size: 12.5px;
+        color: var(--accent);
+        font-family: var(--mono);
+      }
+      .msg { color: var(--muted); padding: 32px 20px; text-align: center; margin: 0; }
+      .msg.error { color: var(--bad); }
 
       /* ---- hero: what is this page ---------------------------------- */
-      .hero { padding: 34px 0 10px; }
+      .hero { padding: 44px 0 8px; }
       .eyebrow {
-        font-family: ui-monospace, "SF Mono", Menlo, monospace;
-        font-size: 11px;
-        letter-spacing: 2.5px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 2px;
         color: var(--accent);
         text-transform: uppercase;
-        margin: 0 0 12px;
+        margin: 0 0 14px;
       }
       .hero h1 {
-        font-size: clamp(24px, 3.6vw, 38px);
-        line-height: 1.15;
+        font-family: var(--display);
+        font-size: clamp(30px, 4.6vw, 46px);
+        font-weight: 700;
+        line-height: 1.08;
         letter-spacing: -0.5px;
-        margin: 0 0 12px;
-        max-width: 760px;
+        margin: 0 0 16px;
+        max-width: 720px;
       }
       .hero .lede {
         color: var(--muted);
-        font-size: 15px;
-        max-width: 760px;
-        margin: 0 0 24px;
+        font-size: 16.5px;
+        max-width: 700px;
+        margin: 0 0 30px;
       }
-      .hero .lede strong { color: var(--text); }
+      .hero .lede strong { color: var(--ink); }
 
-      /* the live pipeline map — orientation, status, and navigation in one */
+      /* the journey map — where every message goes */
       .map {
         display: flex;
         align-items: stretch;
-        gap: 14px;
-        background: var(--panel);
-        border: 1px solid var(--border);
-        border-radius: 14px;
-        padding: 18px 20px;
+        gap: 16px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 20px 22px;
         margin-bottom: 14px;
+        box-shadow: var(--shadow);
       }
       .mnode {
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        background: var(--panel-2);
-        padding: 12px 14px;
-        min-width: 170px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--paper);
+        padding: 14px 16px;
+        min-width: 175px;
         display: flex;
         flex-direction: column;
         gap: 3px;
         justify-content: center;
       }
-      .mnode .mtitle { font-family: ui-monospace, Menlo, monospace; font-size: 11px; letter-spacing: 1.5px; color: var(--slate); }
+      .mnode .mtitle { font-size: 11px; font-weight: 700; letter-spacing: 1.8px; color: var(--muted); }
+      .mnode.core { border-color: var(--accent); background: var(--accent-soft); }
       .mnode.core .mtitle { color: var(--accent); }
-      .mnode .msub { font-size: 12.5px; }
+      .mnode .msub { font-size: 13.5px; }
       .mnode .mstat { color: var(--muted); font-size: 11.5px; }
       .mflow {
         flex: 1;
@@ -149,34 +201,40 @@
         align-self: center;
         height: 2px;
         background: repeating-linear-gradient(90deg, var(--accent) 0 8px, transparent 8px 16px);
-        opacity: 0.3;
+        opacity: 0.25;
       }
-      body.live .mflow { opacity: 0.85; animation: flow 0.8s linear infinite; }
-      @keyframes flow { to { background-position: 16px 0; } }
-      .mdests { display: flex; flex-direction: column; gap: 8px; justify-content: center; min-width: 210px; }
+      body.live .mflow { opacity: 0.7; }
+      .mdests { display: flex; flex-direction: column; gap: 8px; justify-content: center; min-width: 230px; }
       a.mdest {
         display: flex;
         align-items: center;
-        gap: 8px;
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        background: var(--panel-2);
-        padding: 8px 12px;
-        color: var(--text);
+        gap: 9px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--paper);
+        padding: 9px 13px;
+        color: var(--ink);
         text-decoration: none;
-        font-size: 12.5px;
+        font-size: 13.5px;
       }
       a.mdest:hover { border-color: var(--accent); }
       a.mdest .mnote { color: var(--muted); margin-left: auto; font-size: 11.5px; text-align: right; }
-      a.mdest .mnote.ok { color: var(--green); }
-      a.mdest .mnote.bad { color: var(--red); }
-      a.mdest .mnote.warn { color: var(--amber); }
-      .mdot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
-      .mdot.ok { background: var(--green); }
-      .mdot.bad { background: var(--red); }
-      .mdot.warn { background: var(--amber); }
-      .hero .howto { color: var(--muted); font-size: 13px; margin: 0; }
-      .hero .howto b { color: var(--text); }
+      a.mdest .mnote.ok { color: var(--good); }
+      a.mdest .mnote.bad { color: var(--bad); }
+      a.mdest .mnote.warn { color: var(--wait); }
+      .mdot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+      .mdot.ok { background: var(--good); }
+      .mdot.bad { background: var(--bad); }
+      .mdot.warn { background: var(--wait); }
+      .hero .pulse {
+        color: var(--muted);
+        font-size: 14px;
+        margin: 0 0 14px 4px;
+        font-variant-numeric: tabular-nums;
+      }
+      .hero .pulse b { color: var(--ink); }
+      .hero .howto { color: var(--muted); font-size: 14px; margin: 0; }
+      .hero .howto b { color: var(--ink); }
 
       @media (max-width: 860px) {
         .map { flex-direction: column; }
@@ -189,216 +247,277 @@
           margin: 0 auto;
           background: repeating-linear-gradient(180deg, var(--accent) 0 8px, transparent 8px 16px);
         }
-        body.live .mflow { animation: flow-v 0.8s linear infinite; }
-        @keyframes flow-v { to { background-position: 0 16px; } }
         .mdests { min-width: 0; }
       }
       @media (prefers-reduced-motion: reduce) {
         html { scroll-behavior: auto; }
-        .mflow { animation: none !important; }
-        body.live .mflow { animation: none !important; }
+        .dot.live { animation: none; }
       }
 
-      /* ---- scenes ----------------------------------------------------- */
-      .scene { margin: 46px 0 0; scroll-margin-top: 76px; }
+      /* ---- stories ----------------------------------------------------- */
+      .scene { margin: 84px 0 0; padding-top: 30px; border-top: 1px solid var(--line); scroll-margin-top: 84px; }
       .scene-num {
-        font-family: ui-monospace, "SF Mono", Menlo, monospace;
-        font-size: 11px;
-        letter-spacing: 2.5px;
+        font-size: 11.5px;
+        font-weight: 700;
+        letter-spacing: 2px;
         color: var(--accent);
         text-transform: uppercase;
       }
-      .scene h2 { font-size: 21px; letter-spacing: -0.3px; margin: 6px 0 8px; }
-      .scene .scene-lede { color: var(--muted); font-size: 13.5px; max-width: 860px; margin: 0 0 16px; }
-      .scene .scene-lede strong { color: var(--text); }
+      .scene h2 {
+        font-family: var(--display);
+        font-size: clamp(22px, 3vw, 27px);
+        font-weight: 600;
+        letter-spacing: -0.3px;
+        line-height: 1.2;
+        margin: 10px 0 10px;
+        max-width: 720px;
+      }
+      .scene .scene-lede { color: var(--muted); font-size: 15px; max-width: 700px; margin: 0 0 22px; }
+      .scene .scene-lede strong { color: var(--ink); }
 
       .actions {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(225px, 1fr));
-        gap: 12px;
-        margin-bottom: 16px;
+        grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+        gap: 14px;
+        margin-bottom: 18px;
       }
       .action {
-        background: var(--panel);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        padding: 12px 14px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 16px 18px;
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 10px;
+        box-shadow: var(--shadow);
       }
       .action button { align-self: flex-start; }
-      .action p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+      .action p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
       .action[hidden] { display: none; }
 
-      .status-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 14px; color: var(--muted); font-size: 13px; }
-      .pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; font-weight: 600; font-size: 13px; border: 1px solid var(--border); }
-      .pill.up { color: var(--green); background: rgba(52,211,153,0.12); }
-      .pill.down { color: var(--red); background: rgba(248,113,113,0.12); }
-      .pill.flaky { color: var(--amber); background: rgba(251,191,36,0.14); }
+      .status-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 16px; color: var(--muted); font-size: 14px; }
+      .pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 13px; border-radius: 999px; font-weight: 600; font-size: 13px; }
+      .pill.up { color: var(--good); background: var(--good-bg); }
+      .pill.down { color: var(--wait); background: var(--wait-bg); }
+      .pill.flaky { color: var(--wait); background: var(--wait-bg); }
 
-      .note { margin: 0 0 16px; font-size: 12.5px; color: var(--muted); background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px 14px; }
-      .note b { color: var(--green); }
-      .note b.bad { color: var(--red); }
+      .note {
+        margin: 0 0 18px;
+        font-size: 14px;
+        color: var(--ink);
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-left: 3px solid var(--accent);
+        border-radius: 10px;
+        padding: 12px 16px;
+        box-shadow: var(--shadow);
+      }
+      .note b { color: var(--good); }
+      .note b.bad { color: var(--bad); }
 
       .cards {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
         gap: 12px;
-        margin-bottom: 16px;
+        margin-bottom: 18px;
       }
-      .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
-      .card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
-      .card .value { font-size: 26px; font-weight: 700; margin-top: 4px; }
+      .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow); }
+      .card .label { color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.5px; }
+      .card .value { font-size: 24px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
       .card .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
-      .value.green { color: var(--green); }
-      .value.red { color: var(--red); }
-      .value.amber { color: var(--amber); }
+      .value.green { color: var(--good); }
+      .value.red { color: var(--bad); }
+      .value.amber { color: var(--wait); }
 
       .grid { display: grid; grid-template-columns: 1.35fr 1fr; gap: 22px; align-items: start; }
       @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
-      .panel-title { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 10px 2px; }
+      .panel-title { font-size: 12.5px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin: 26px 0 10px 2px; }
 
       /* ---- two-banks ledger ------------------------------------------- */
-      .banks { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-      @media (max-width: 980px) { .banks { grid-template-columns: 1fr; } }
-      .bank { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+      .banks { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      .banks > .msg { grid-column: 1 / -1; }
+      @media (max-width: 860px) { .banks { grid-template-columns: 1fr; } }
+      .bank { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; box-shadow: var(--shadow); }
       .bank-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-      .bank-name { font-weight: 700; }
-      .bank-meter { margin-left: auto; font-weight: 700; font-size: 13px; }
-      .bank-meter.ok { color: var(--green); }
-      .bank-meter.bad { color: var(--red); }
-      .bank-meter.sync { color: var(--amber); }
-      .bank-sub { color: var(--muted); font-size: 12px; margin: 2px 0 10px; }
-      .accounts { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-      .accounts th { text-align: left; color: var(--muted); font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.4px; padding: 4px 6px; border-bottom: 1px solid var(--border); }
-      .accounts td { padding: 5px 6px; border-bottom: 1px solid var(--border); }
+      .bank-name { font-family: var(--display); font-weight: 600; font-size: 16.5px; }
+      .bank-meter { margin-left: auto; font-weight: 700; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+      .bank-meter.ok { color: var(--good); }
+      .bank-meter.bad { color: var(--bad); }
+      .bank-meter.sync { color: var(--wait); }
+      .bank-sub { color: var(--muted); font-size: 13px; margin: 4px 0 12px; }
+      .accounts { width: 100%; border-collapse: collapse; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+      .accounts th { text-align: left; color: var(--muted); font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; padding: 5px 6px; border-bottom: 1px solid var(--line); }
+      .accounts td { padding: 6px; border-bottom: 1px solid var(--line); }
       .accounts tr:last-child td { border-bottom: none; }
       .accounts .num { text-align: right; }
-      .drift-ok { color: var(--green); }
-      .drift-bad { color: var(--red); font-weight: 700; }
-      .stale-tag { color: var(--amber); font-size: 10.5px; font-weight: 700; }
-      .bank-tail { margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 6px; }
-      .bank-tail .trow { display: flex; gap: 8px; align-items: center; font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; color: var(--muted); padding: 1px 0; flex-wrap: wrap; }
+      .drift-ok { color: var(--good); }
+      .drift-bad { color: var(--bad); font-weight: 700; }
+      .stale-tag { color: var(--wait); font-size: 10.5px; font-weight: 700; }
+      .bank-tail { margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 8px; }
+      .bank-tail .trow { display: flex; gap: 8px; align-items: center; font-family: var(--mono); font-size: 11.5px; color: var(--muted); padding: 1px 0; flex-wrap: wrap; }
       .bank-tail .trow .time { margin-left: auto; }
-      .bank-backlog { color: var(--muted); font-size: 11.5px; margin-top: 6px; }
+      .bank-backlog { color: var(--muted); font-size: 12.5px; margin-top: 10px; }
 
-      /* Two-banks ledger (the centerpiece) */
-      .pill.flaky { color: var(--amber); background: rgba(251,191,36,0.14); }
-      .banks { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
-      @media (max-width: 980px) { .banks { grid-template-columns: 1fr; } }
-      .bank { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
-      .bank-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-      .bank-name { font-weight: 700; }
-      .bank-meter { margin-left: auto; font-weight: 700; font-size: 13px; }
-      .bank-meter.ok { color: var(--green); }
-      .bank-meter.bad { color: var(--red); }
-      .bank-meter.sync { color: var(--amber); }
-      .bank-sub { color: var(--muted); font-size: 12px; margin: 2px 0 10px; }
-      .accounts { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-      .accounts th { text-align: left; color: var(--muted); font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.4px; padding: 4px 6px; border-bottom: 1px solid var(--border); }
-      .accounts td { padding: 5px 6px; border-bottom: 1px solid var(--border); }
-      .accounts tr:last-child td { border-bottom: none; }
-      .accounts .num { text-align: right; }
-      .drift-ok { color: var(--green); }
-      .drift-bad { color: var(--red); font-weight: 700; }
-      .stale-tag { color: var(--amber); font-size: 10.5px; font-weight: 700; }
-      .bank-tail { margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 6px; }
-      .bank-tail .trow { display: flex; gap: 8px; align-items: center; font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; color: var(--muted); padding: 1px 0; flex-wrap: wrap; }
-      .bank-tail .trow .time { margin-left: auto; }
-      .bank-backlog { color: var(--muted); font-size: 11.5px; margin-top: 6px; }
-
-      /* Live price feed */
-      .feed { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 22px; }
-      .feed-row { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--border); }
+      /* ---- live message feed ------------------------------------------ */
+      .feed { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); }
+      .feed-row { display: flex; align-items: center; gap: 12px; padding: 9px 15px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
       .feed-row:last-child { border-bottom: none; }
-      .feed-row .tag { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 2px 7px; border-radius: 999px; }
-      .feed-row .tag.tick { color: var(--slate); background: rgba(148,163,184,0.14); }
-      .feed-row .tag.alert { color: var(--amber); background: rgba(251,191,36,0.16); }
-      .feed-row .tag.trade { color: var(--accent); background: rgba(108,140,255,0.16); }
-      .feed-row .sym { color: var(--text); min-width: 78px; }
-      .feed-row .px { color: var(--text); min-width: 96px; }
+      .feed-row .tag { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 2px 8px; border-radius: 999px; }
+      .feed-row .tag.tick { color: var(--muted); background: var(--paper); }
+      .feed-row .tag.alert { color: var(--wait); background: var(--wait-bg); }
+      .feed-row .tag.trade { color: var(--accent); background: var(--accent-soft); }
+      .feed-row .sym { min-width: 78px; }
+      .feed-row .px { min-width: 96px; }
       .feed-row .chg { min-width: 74px; }
-      .feed-row .chg.green { color: var(--green); }
-      .feed-row .chg.red { color: var(--red); }
+      .feed-row .chg.green { color: var(--good); }
+      .feed-row .chg.red { color: var(--bad); }
       .feed-row .chg.muted { color: var(--muted); }
       .feed-row .time { color: var(--muted); margin-left: auto; }
+      @keyframes fade-in { from { opacity: 0; } }
+      .feed-row.new { animation: fade-in 0.3s ease-out; }
       @media (max-width: 560px) {
         .feed-row { flex-wrap: wrap; row-gap: 2px; }
         .feed-row .sym, .feed-row .px, .feed-row .chg { min-width: 0; }
         .msg { padding: 22px 14px; word-break: break-word; }
       }
 
-      /* ---- embedded Discord -------------------------------------------- */
-      .discord { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+      /* ---- embedded Discord (dark app in a dark frame) ------------------ */
+      .discord { background: #2b2d31; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); }
       .discord iframe { width: 100%; height: 560px; border: 0; display: block; }
-      .discord .msg { padding: 40px 24px; }
+      .discord .msg { padding: 40px 24px; color: #b8bcc4; }
 
-      /* ---- workers strip ------------------------------------------------ */
+      /* ---- couriers strip ------------------------------------------------ */
       .workers { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 0 0 10px 2px; }
-      .worker-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; font-size: 12px; background: var(--panel); font-family: ui-monospace, Menlo, monospace; }
+      .worker-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; font-size: 12px; background: var(--surface); font-family: var(--mono); }
       .worker-chip .n { color: var(--muted); }
       .wdot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
       .workers .note { all: unset; color: var(--muted); font-size: 11.5px; margin-left: 4px; }
       .workers .note code { font-size: 11px; }
 
-      /* ---- delivery lifecycle timeline ---------------------------------- */
-      .lifecycle { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 22px; }
-      .dl-item { border-bottom: 1px solid var(--border); padding: 10px 14px; }
+      /* ---- delivery tracking (the signature element) --------------------- */
+      .lifecycle { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; margin-bottom: 8px; box-shadow: var(--shadow); }
+      .dl-item { border-bottom: 1px solid var(--line); padding: 12px 16px; }
       .dl-item:last-child { border-bottom: none; }
       .dl-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-      .badge { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 2px 8px; border-radius: 999px; }
-      .badge.pending { color: var(--amber); background: rgba(251,191,36,0.16); }
-      .badge.in_flight { color: var(--blue); background: rgba(96,165,250,0.16); }
-      .badge.succeeded { color: var(--green); background: rgba(52,211,153,0.14); }
-      .badge.failed { color: var(--amber); background: rgba(251,191,36,0.16); }
-      .badge.dead_lettered { color: var(--red); background: rgba(248,113,113,0.16); }
-      .dl-head .evt { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
-      .dl-head .att { color: var(--muted); font-size: 12px; }
-      .dl-head .countdown { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--amber); }
-      .dl-head .countdown.lease { color: var(--blue); }
-      .tl { margin: 8px 0 0 5px; border-left: 2px solid var(--border); padding: 2px 0 2px 12px; }
-      .tl-attempt { display: flex; align-items: center; gap: 10px; padding: 2px 0; font-family: ui-monospace, Menlo, monospace; font-size: 12px; flex-wrap: wrap; }
+      .badge { font-size: 11px; font-weight: 700; letter-spacing: 0.3px; padding: 3px 10px; border-radius: 999px; }
+      .badge.pending { color: var(--wait); background: var(--wait-bg); }
+      .badge.in_flight { color: var(--accent); background: var(--accent-soft); }
+      .badge.succeeded { color: var(--good); background: var(--good-bg); }
+      .badge.failed { color: var(--wait); background: var(--wait-bg); }
+      .badge.dead_lettered { color: var(--muted); background: var(--paper); border: 1px solid var(--line); }
+      .dl-head .evt { font-size: 13.5px; }
+      .dl-head .att { color: var(--muted); font-size: 12.5px; }
+      .dl-head .countdown { margin-left: auto; font-size: 12.5px; font-weight: 600; color: var(--wait); font-variant-numeric: tabular-nums; }
+      .dl-head .countdown.lease { color: var(--accent); }
+      .tl { margin: 10px 0 2px 6px; border-left: 2px solid var(--line); padding: 2px 0 2px 16px; }
+      .tl-attempt { position: relative; display: flex; align-items: center; gap: 10px; padding: 3px 0; font-size: 13px; flex-wrap: wrap; }
+      .tl-attempt::before {
+        content: "";
+        position: absolute;
+        left: -22px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--surface);
+        border: 2px solid var(--muted);
+      }
       .tl-attempt .num { color: var(--muted); }
       .tl-attempt .dur { color: var(--muted); }
-      .tl-attempt .when { color: var(--muted); margin-left: auto; }
-      .tl-gap { color: var(--muted); font-size: 11.5px; padding: 1px 0 1px 14px; }
-      .tl-gap b { color: var(--slate); font-weight: 600; }
-      .tl-next { color: var(--amber); font-size: 11.5px; padding: 1px 0 1px 14px; }
+      .tl-attempt .when { color: var(--muted); margin-left: auto; font-variant-numeric: tabular-nums; }
+      .tl-attempt.ok::before { border-color: var(--good); background: var(--good); }
+      .tl-attempt.wait::before { border-color: var(--wait); background: var(--surface); }
+      .tl-attempt.bad::before { border-color: var(--bad); background: var(--bad); }
+      .ok-txt { color: var(--good); font-weight: 600; }
+      .wait-txt { color: var(--wait); }
+      .bad-txt { color: var(--bad); font-weight: 600; }
+      .tl-gap { color: var(--muted); font-size: 12px; padding: 2px 0 2px 14px; }
+      .tl-gap b { color: var(--ink); font-weight: 600; }
+      .tl-next { color: var(--wait); font-size: 12px; padding: 2px 0 2px 14px; font-variant-numeric: tabular-nums; }
 
-      /* ---- request inbox ------------------------------------------------ */
-      .inbox { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-      .inbox-item { border-bottom: 1px solid var(--border); }
+      /* ---- receiver mailbox ---------------------------------------------- */
+      .inbox { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); }
+      .inbox-item { border-bottom: 1px solid var(--line); }
       .inbox-item:last-child { border-bottom: none; }
-      .inbox-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; flex-wrap: wrap; }
-      .inbox-head:hover { background: var(--panel-2); }
-      .inbox-head .evt { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; color: var(--text); }
-      .inbox-head .attempt { color: var(--muted); font-size: 12px; }
-      .inbox-head .sig { font-size: 11.5px; font-weight: 600; }
-      .inbox-head .sig.ok { color: var(--green); }
-      .inbox-head .sig.err { color: var(--red); }
+      .inbox-head { display: flex; align-items: center; gap: 10px; padding: 11px 15px; cursor: pointer; flex-wrap: wrap; }
+      .inbox-head:hover { background: var(--paper); }
+      .inbox-head .evt { font-size: 13.5px; color: var(--ink); }
+      .inbox-head .attempt { color: var(--muted); font-size: 12.5px; }
+      .inbox-head .sig { font-size: 12px; font-weight: 600; }
+      .inbox-head .sig.ok { color: var(--good); }
+      .inbox-head .sig.err { color: var(--bad); }
       .inbox-head .time { color: var(--muted); margin-left: auto; }
       .status-code { font-weight: 600; }
-      .status-code.ok { color: var(--green); }
-      .status-code.err { color: var(--red); }
-      .inbox-body { padding: 0 14px 14px; }
-      .inbox-body .hdrs { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 12px; white-space: pre-wrap; word-break: break-all; color: var(--slate); }
+      .status-code.ok { color: var(--good); }
+      .status-code.err { color: var(--bad); }
+      .inbox-body { padding: 0 15px 15px; }
+      .inbox-body .env-label { margin: 2px 0 8px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: var(--muted); }
+      .inbox-body .hdrs { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 12px; white-space: pre-wrap; word-break: break-all; color: var(--ink); font-family: var(--mono); }
       .inbox-body .hdrs .hk { color: var(--muted); }
-      .inbox-body pre { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 8px 0 0; font-size: 12px; overflow-x: auto; color: var(--text); }
+      .inbox-body pre { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 8px 0 0; font-size: 12px; overflow-x: auto; color: var(--ink); }
 
-      footer { color: var(--muted); font-size: 12px; text-align: center; padding: 40px 22px 30px; }
+      /* ---- layered disclosure: under-the-hood expanders ------------------ */
+      details.uth { margin: 20px 0 0; }
+      details.uth > summary {
+        cursor: pointer;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 600;
+        list-style: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 6px 15px;
+        background: var(--surface);
+      }
+      details.uth > summary::-webkit-details-marker { display: none; }
+      details.uth > summary:hover { color: var(--ink); border-color: var(--muted); }
+      details.uth[open] > summary { color: var(--ink); }
+      .uth-body {
+        margin-top: 12px;
+        border: 1px dashed var(--line);
+        border-radius: 12px;
+        padding: 16px 18px;
+        background: var(--surface);
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .uth-body .uth-note { margin: 0 0 12px; max-width: 700px; }
+      .uth-body .uth-note:last-child { margin-bottom: 0; }
+      .uth-tech { font-family: var(--mono); font-size: 12px; }
+      .uth-tech .dl-item { padding: 10px 0; border-bottom: 1px solid var(--line); }
+      .uth-tech .dl-item:last-child { border-bottom: none; }
+      .uth-bank { padding: 10px 0; border-bottom: 1px solid var(--line); }
+      .uth-bank:last-child { border-bottom: none; }
+      .uth-bank .uth-note b { color: var(--ink); }
+      .stats-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; margin-top: 4px; }
+      .stats-table td { padding: 5px 8px 5px 0; border-bottom: 1px solid var(--line); }
+      .stats-table tr:last-child td { border-bottom: none; }
+      .stats-table td:first-child { color: var(--muted); }
+      .stats-table td:last-child { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
+
+      /* inline "why?" expander inside result notes */
+      details.why { margin-top: 8px; font-size: 13px; }
+      details.why > summary { cursor: pointer; color: var(--accent); font-weight: 600; list-style: none; }
+      details.why > summary::-webkit-details-marker { display: none; }
+      details.why .why-body { margin-top: 6px; color: var(--muted); }
+
+      footer { color: var(--muted); font-size: 13px; text-align: center; padding: 72px 24px 40px; max-width: 560px; margin: 0 auto; }
     </style>
   </head>
   <body>
     <header>
-      <div class="brand">HOOK<span>IT</span> · Live Delivery Console</div>
-      <span id="live-dot" class="dot" title="polling status"></span>
+      <div class="brand">Hook<span>It</span> · Live Demo</div>
+      <span id="live-dot" class="dot" title="connection status"></span>
       <span class="live-label" id="live-label">connecting…</span>
       <div class="spacer"></div>
-      <nav class="scenes-nav" aria-label="Scenes">
-        <a href="#scene-1">1 · Live stream</a>
-        <a href="#scene-2">2 · Break the pipeline</a>
-        <a href="#scene-3">3 · Two banks</a>
+      <nav class="scenes-nav" aria-label="Stories">
+        <a href="#banks">The two banks</a>
+        <a href="#receiver">Your receiver</a>
+        <a href="#feed">Live feed</a>
       </nav>
       <details class="adv">
         <summary>⚙ Advanced</summary>
@@ -412,160 +531,197 @@
     <main>
       <!-- ============ HERO: orientation ============ -->
       <section class="hero">
-        <p class="eyebrow">Live system · nothing on this page is simulated</p>
-        <h1>Watch a webhook platform survive real failures.</h1>
+        <p class="eyebrow">Live demo · nothing on this page is staged</p>
+        <h1>The delivery service for messages between apps.</h1>
         <p class="lede">
-          Right now, a producer is publishing <strong>live crypto prices and trades</strong> to this
-          platform's API. HookIt signs every event and delivers it to the receivers below —
-          retrying with exponential backoff until each delivery lands.
-          <strong>Your job is to break things.</strong> The platform's job is to recover.
+          Right now, a small demo trading app is sending out live prices and trades. HookIt takes
+          each message, <strong>seals it</strong> so no one can fake it, and delivers it to the
+          receivers below — and if a receiver is down, it <strong>keeps trying until the message
+          lands</strong>. Your job on this page is to break things, for real. HookIt's job is to
+          recover.
         </p>
 
-        <div class="map" role="group" aria-label="Live pipeline">
+        <div class="map" role="group" aria-label="Where every message goes">
           <div class="mnode">
-            <span class="mtitle">PRODUCER</span>
-            <span class="msub">live market prices &amp; trades</span>
-            <span class="mstat mono" id="map-producer">waiting for events…</span>
+            <span class="mtitle">THE SENDER</span>
+            <span class="msub">a demo trading app</span>
+            <span class="mstat" id="map-producer">waiting for the first message…</span>
           </div>
           <div class="mflow" aria-hidden="true"></div>
           <div class="mnode core">
-            <span class="mtitle">HOOKIT ENGINE</span>
-            <span class="msub">sign · queue · deliver · retry</span>
-            <span class="mstat mono" id="map-engine">—</span>
+            <span class="mtitle">HOOKIT</span>
+            <span class="msub">seals, queues, and delivers every message</span>
+            <span class="mstat" id="map-engine">—</span>
           </div>
           <div class="mflow" aria-hidden="true"></div>
           <div class="mdests">
-            <a class="mdest" href="#scene-1"><span class="mdot" id="mdot-discord"></span>Discord channel<span class="mnote" id="map-discord">—</span></a>
-            <a class="mdest" href="#scene-2"><span class="mdot" id="mdot-pipe"></span>Your pipeline<span class="mnote" id="map-pipe">—</span></a>
-            <a class="mdest" href="#scene-3"><span class="mdot" id="mdot-banks"></span>Two demo banks<span class="mnote" id="map-banks">—</span></a>
+            <a class="mdest" href="#banks"><span class="mdot" id="mdot-banks"></span>Two demo banks<span class="mnote" id="map-banks">—</span></a>
+            <a class="mdest" href="#receiver"><span class="mdot" id="mdot-pipe"></span>A receiver you control<span class="mnote" id="map-pipe">—</span></a>
+            <a class="mdest" href="#feed"><span class="mdot" id="mdot-discord"></span>A real Discord channel<span class="mnote" id="map-discord">—</span></a>
           </div>
         </div>
+        <p class="pulse" id="pulse" hidden></p>
         <p class="howto">
-          <b>New here?</b> Follow the three scenes in order — each one breaks something real and
-          shows which guarantee handles it. Click a receiver above to jump straight to it.
+          <b>Three short stories below.</b> Each one lets you break something real and watch what
+          happens. Click a destination above to jump straight to it.
         </p>
       </section>
 
-      <section class="console">
-        <p class="intro">
-          <strong>One event stream, two banks.</strong> The producer also emits real
-          <code>trade.executed</code> events, and this platform fans each one out to both banks
-          below through the same delivery engine — at-least-once, HMAC-signed, with a stable
-          <code>event_id</code>, a timestamp, and an attempt counter on every delivery.
-          <strong>Bank A</strong> applies every webhook as it arrives: no signature check, no
-          dedupe, no locking. <strong>Bank B</strong> uses the delivery metadata the way a correct
-          receiver should. The meter continuously diffs both ledgers against the balances computed
-          from the platform's own event log. Break the world below; watch who stays solvent.
-        </p>
-        <div class="controls">
-          <div class="cgroup">
-            <span class="cg-label">Chaos</span>
-            <button id="lostack-btn" class="danger" title="Both banks keep processing webhooks but stop acknowledging them — the platform retries, redelivering trades that were already applied">Drop acks 📉</button>
-            <button id="storm-btn" title="The producer fires concurrent trades against ONE account — parallel workers deliver them overlapping">Trade storm 🌊</button>
-            <button id="timetravel-btn" class="ghost" title="Take both banks down so deliveries queue as retries, then restore — retries arrive interleaved with fresh trades, out of order">Pull the plug 🔌</button>
-            <button id="forge-ledger-btn" class="ghost" title="POST an unsigned fake trade straight at both banks from this browser">Forge a trade 🕵</button>
-          </div>
-        </div>
-        <p id="ledger-note" class="dup-note" hidden></p>
-        <div id="banks-wrap" class="banks">
-          <p class="msg">Waiting for the first trades… is <code>python -m producer</code> running?</p>
-        </div>
-      </section>
-
-      <div id="cards" class="cards"></div>
-
-      <p class="section-title">Live price feed · real events published to <code>POST /events</code></p>
-      <div id="feed-wrap" class="feed">
-        <p class="msg">Waiting for the producer's first ticks…</p>
-      </div>
-
-      <p class="section-title">Delivery lifecycle · every attempt, backoff gap, and lease — straight from the engine's own rows</p>
-      <div id="workers-strip" class="workers" hidden></div>
-      <div id="lifecycle-wrap" class="lifecycle">
-        <p class="msg">Recent deliveries to your pipeline appear here with their full retry history.</p>
-      </div>
-
-      <!-- ============ SCENE 2: break the pipeline ============ -->
-      <section class="scene" id="scene-2">
-        <span class="scene-num">Scene 2</span>
-        <h2>Break your pipeline — watch retries, backoff, and the dead-letter queue</h2>
+      <!-- ============ STORY 1: two banks ============ -->
+      <section class="scene" id="banks">
+        <span class="scene-num">Story 1 · two banks</span>
+        <h2>Two banks get the exact same messages. Only one keeps its money safe.</h2>
         <p class="scene-lede">
-          One of the receivers is a pipeline <strong>you control</strong>. Take it down and every
-          delivery starts failing for real: the timeline below shows each attempt, the measured
-          backoff gap between attempts, and the live countdown to the next retry. Give up after
-          enough attempts and a delivery is <strong>dead-lettered</strong> — bring the pipeline
-          back and redrive it to recover.
-        </p>
-        <p class="status-line">Your pipeline is <span id="health-pill" class="pill up">● Healthy</span></p>
-        <div class="actions">
-          <div class="action">
-            <button id="health-btn" class="danger">Bring pipeline down</button>
-            <p>Your receiver starts answering 503. Deliveries fail and retry with exponential backoff — watch the timeline fill up.</p>
-          </div>
-          <div class="action">
-            <button id="forge-btn" class="ghost">Send forged request 🕵</button>
-            <p>POST an unsigned payload straight to your receiver from this browser. The HMAC check rejects it — it lands in the inbox as <code>401</code>.</p>
-          </div>
-          <div class="action" id="force-dlq-wrap" hidden>
-            <button id="force-dlq" class="ghost">Force one to dead-letter →</button>
-            <p>Impatient? Fast-forward one failing delivery through its remaining retries so it dead-letters now.</p>
-          </div>
-          <div class="action" id="redrive-wrap" hidden>
-            <button id="redrive-link">Redrive dead-letters ↻</button>
-            <p>Requeue every dead-lettered delivery through the normal path — now that the pipeline is healthy, they succeed.</p>
-          </div>
-        </div>
-        <p class="panel-title">Delivery lifecycle · every attempt, backoff gap, and lease — straight from the engine's own rows</p>
-        <div id="workers-strip" class="workers" hidden></div>
-        <div id="lifecycle-wrap" class="lifecycle">
-          <p class="msg">Recent deliveries to your pipeline appear here with their full retry history.</p>
-        </div>
-        <p class="panel-title">Your pipeline's inbox · signed requests received</p>
-        <div id="inbox-wrap" class="inbox">
-          <p class="msg">Nothing received yet — deliveries that reach your endpoint show up here with their real HMAC signature.</p>
-        </div>
-      </section>
-
-      <!-- ============ SCENE 3: two banks ============ -->
-      <section class="scene" id="scene-3">
-        <span class="scene-num">Scene 3 · the payoff</span>
-        <h2>One event stream, two banks — only one stays solvent</h2>
-        <p class="scene-lede">
-          The platform delivers the same signed <code>trade.executed</code> events to two bank
-          applications. <strong>Bank A</strong> trusts whatever arrives: no signature check, no
-          dedupe, no locking. <strong>Bank B</strong> uses the delivery metadata — stable
-          <code>event_id</code>, signed timestamp, HMAC — the way a correct receiver should. The
-          meter on each bank continuously diffs its ledger against the platform's own event log.
-          Break the world with the buttons below and watch who bleeds money.
+          HookIt delivers every trade to two demo banks. <strong>Bank A</strong> believes
+          everything it's told — no checks at all. <strong>Bank B</strong> follows the safety
+          rules HookIt makes possible: check the seal, skip repeats, take turns writing, ignore
+          stale news. Use the buttons to cause real trouble, then watch Bank A's books drift
+          while Bank B's always add up.
         </p>
         <div class="actions">
           <div class="action">
-            <button id="lostack-btn" class="danger">Drop acks 📉</button>
-            <p>Both banks keep processing webhooks but stop acknowledging them, so the platform retries. Bank A credits the same trade twice; Bank B dedupes on <code>event_id</code>.</p>
+            <button id="lostack-btn" class="danger">Lose the confirmations</button>
+            <p>The banks keep processing trades but stop saying &ldquo;got it&rdquo;, so HookIt sends each one again. Bank A counts the same trade twice. Bank B notices the repeat and ignores it.</p>
           </div>
           <div class="action">
-            <button id="storm-btn">Trade storm 🌊</button>
-            <p>Concurrent trades hit one account across parallel workers. Bank A's read-modify-write loses an update; Bank B's row lock keeps the exact total.</p>
+            <button id="storm-btn">Send a rush of trades</button>
+            <p>Dozens of trades hit one account at the same moment. Bank A's bookkeeping trips over itself and loses one. Bank B takes them one at a time and stays exact.</p>
           </div>
           <div class="action">
-            <button id="timetravel-btn" class="ghost">Pull the plug 🔌</button>
-            <p>Take both banks down so deliveries queue as retries, then restore. Old retries arrive mixed with fresh trades — Bank B rejects stale overwrites by timestamp.</p>
+            <button id="timetravel-btn" class="ghost">Take both banks offline</button>
+            <p>While the banks are offline, HookIt holds every trade and keeps trying. When they come back, old messages arrive mixed in with new ones — Bank B checks dates, so old news never overwrites new.</p>
           </div>
           <div class="action">
-            <button id="forge-ledger-btn" class="ghost">Forge a trade 🕵</button>
-            <p>POST an unsigned $5,000 trade straight at both banks from this browser. Bank A books money that never existed; Bank B's HMAC check answers 401.</p>
+            <button id="forge-ledger-btn" class="ghost">Slip in a fake trade</button>
+            <p>Send a fake $5,000 trade straight to both banks, going around HookIt. Bank A books money that never existed. Bank B checks the seal and turns it away.</p>
           </div>
         </div>
         <p id="ledger-note" class="note" hidden></p>
         <div id="banks-wrap" class="banks">
-          <p class="msg">Waiting for the first trades… if this stays empty, the producer service isn't running (<code>python -m producer</code>).</p>
+          <p class="msg">Waiting for the first trades — the demo sender publishes every few seconds.</p>
         </div>
+        <details class="uth">
+          <summary>🔧 Under the hood</summary>
+          <div class="uth-body">
+            <p class="uth-note">
+              Both banks are ordinary web applications receiving signed <code>trade.executed</code>
+              webhooks from this platform. The drift meter continuously diffs each bank's ledger
+              against the expected balances computed from the platform's own event log. Below:
+              each bank's rules and the raw requests it actually received.
+            </p>
+            <div id="uth-banks" class="uth-tech"><p class="uth-note">No requests received yet.</p></div>
+          </div>
+        </details>
+      </section>
+
+      <!-- ============ STORY 2: your receiver ============ -->
+      <section class="scene" id="receiver">
+        <span class="scene-num">Story 2 · your receiver</span>
+        <h2>What happens when the receiver goes offline?</h2>
+        <p class="scene-lede">
+          This receiver is <strong>yours</strong>. Switch it off and watch HookIt refuse to give
+          up: it tries again, waits a little longer between tries, and if the receiver stays down
+          too long, it sets the message aside — <strong>safe, not lost</strong>. Then switch the
+          receiver back on and ask HookIt to finish the job.
+        </p>
+        <p class="status-line">Your receiver is <span id="health-pill" class="pill up">● accepting messages</span></p>
+        <div class="actions">
+          <div class="action">
+            <button id="health-btn" class="danger">Switch the receiver off</button>
+            <p>Deliveries start failing for real. HookIt tries again, waiting a bit longer each time — watch the tracking list below.</p>
+          </div>
+          <div class="action">
+            <button id="forge-btn" class="ghost">Send a fake message</button>
+            <p>Sneak an unsealed message straight to your receiver. It's turned away — you'll see it in the mailbox marked &ldquo;rejected&rdquo;.</p>
+          </div>
+          <div class="action" id="force-dlq-wrap" hidden>
+            <button id="force-dlq" class="ghost">Fast-forward one message ⏩</button>
+            <p>Don't want to wait out the retries? Jump one failing message straight to &ldquo;set aside&rdquo;.</p>
+          </div>
+          <div class="action" id="redrive-wrap" hidden>
+            <button id="redrive-link">Deliver the set-aside messages</button>
+            <p>Now that the receiver is back, ask HookIt to deliver everything it set aside. Watch them arrive.</p>
+          </div>
+        </div>
+        <p id="receiver-note" class="note" hidden></p>
+        <p class="panel-title">Delivery tracking · every try, exactly as it happened</p>
+        <div id="lifecycle-wrap" class="lifecycle">
+          <p class="msg">Messages headed to your receiver appear here, each with its full delivery history.</p>
+        </div>
+        <p class="panel-title">Your receiver's mailbox · what actually arrived</p>
+        <div id="inbox-wrap" class="inbox">
+          <p class="msg">Nothing here yet — messages that reach your receiver appear here.</p>
+        </div>
+        <details class="uth">
+          <summary>🔧 Under the hood</summary>
+          <div class="uth-body">
+            <p class="uth-note">
+              The tracking list above is rendered live from the delivery engine's own rows.
+              Failed deliveries retry on exponential backoff with jitter —
+              <code>min(base·2^(n−1), cap)</code> — and dead-letter after the attempt limit;
+              redrive requeues them through the normal path. Concurrent workers claim due
+              deliveries with <code>FOR UPDATE SKIP LOCKED</code>. Below: per-worker attribution
+              and every attempt with HTTP status, duration, and the measured backoff gap.
+            </p>
+            <div id="workers-strip" class="workers" hidden></div>
+            <div id="uth-tracking" class="uth-tech"><p class="uth-note">No deliveries yet.</p></div>
+          </div>
+        </details>
+      </section>
+
+      <!-- ============ STORY 3: the live feed ============ -->
+      <section class="scene" id="feed">
+        <span class="scene-num">Story 3 · the live feed</span>
+        <h2>See for yourself — these messages are real.</h2>
+        <p class="scene-lede">
+          This is the live stream of messages the demo sender is publishing right now: crypto
+          prices and trades. The Discord channel next to it is a real public server — HookIt is
+          delivering the same alerts there as you watch.
+        </p>
+        <div class="actions">
+          <div class="action">
+            <button id="burst-btn">Send a burst of messages</button>
+            <p>Ask the sender to fire off a quick flood. Watch the counters climb.</p>
+          </div>
+          <div class="action">
+            <button id="dup-btn" class="ghost">Send the same message twice</button>
+            <p>Two identical messages arrive at the exact same instant. HookIt keeps one and ignores the copy — nothing ever gets counted twice.</p>
+          </div>
+        </div>
+        <p id="dup-note" class="note" hidden></p>
+        <div class="grid">
+          <div>
+            <p class="panel-title">Live messages from the sender</p>
+            <div id="feed-wrap" class="feed">
+              <p class="msg">No messages yet — the demo sender publishes every few seconds.</p>
+            </div>
+          </div>
+          <div>
+            <p class="panel-title">A real Discord channel, receiving the same alerts</p>
+            <div id="discord-wrap" class="discord">
+              <p class="msg">The Discord view isn't set up on this deployment.</p>
+            </div>
+          </div>
+        </div>
+        <details class="uth">
+          <summary>🔧 Under the hood</summary>
+          <div class="uth-body">
+            <p class="uth-note">
+              Events enter through <code>POST /events</code> with an <code>Idempotency-Key</code>
+              header; concurrent duplicates collapse on a unique constraint at ingestion. The
+              sender is a separate producer service (<code>python -m producer</code> locally), and
+              the Discord embed is configured via <code>DISCORD_WIDGET_SERVER_ID</code> /
+              <code>DISCORD_WIDGET_CHANNEL_ID</code>. Live delivery metrics:
+            </p>
+            <div id="uth-stats"><p class="uth-note">No metrics yet.</p></div>
+          </div>
+        </details>
       </section>
     </main>
 
     <footer>
-      Every failure on this page is injected into the running system; every recovery is the
-      production delivery code doing its job.
+      Nothing on this page is staged. Every breakdown you cause really happens, and every
+      recovery is HookIt's actual delivery engine doing its job.
     </footer>
 
     <script>
@@ -615,35 +771,47 @@
       }
 
       // ---- traffic + reliability controls --------------------------------
+      // Plain sentence up front; the technical evidence sits behind "Why?".
+      function noteHtml(plain, why) {
+        return plain + (why ? `<details class="why"><summary>Why?</summary><div class="why-body">${why}</div></details>` : "");
+      }
+      function showNote(el, plain, why) {
+        el.hidden = false;
+        el.innerHTML = noteHtml(plain, why);
+      }
+      const SENDER_DOWN = "The demo sender isn't answering, so nothing was sent. (It runs as a separate service.)";
+
       $("burst-btn").addEventListener("click", () =>
-        act($("burst-btn"), "Generating…", async () => {
+        act($("burst-btn"), "Sending…", async () => {
           const r = await api("/showcase/burst", { method: "POST" });
-          if (!r || !r.published) alert("Producer unreachable — no burst fired. Is `python -m producer` running?");
+          if (!r || !r.published) showNote($("dup-note"), SENDER_DOWN);
         }));
 
       $("dup-btn").addEventListener("click", () =>
-        act($("dup-btn"), "Racing…", async () => {
+        act($("dup-btn"), "Sending…", async () => {
           const r = await api("/showcase/duplicate", { method: "POST" });
           if (!r || !r.results || r.results.length < 2) {
-            alert("Producer unreachable — no duplicate fired. Is `python -m producer` running?");
+            showNote($("dup-note"), SENDER_DOWN);
             return;
           }
           const [a, b] = r.results;
-          const note = $("dup-note");
-          note.hidden = false;
           if (a.event_id && a.event_id === b.event_id) {
-            note.innerHTML = `Two POSTs raced in with the same <code>Idempotency-Key</code> (${esc(r.idempotency_key)}). ` +
-              `Both answered with the <b>same event_id ${esc(a.event_id.slice(0, 8))}…</b> and ` +
-              `<b>${a.queued_deliveries ?? "?"} delivery</b> was created — the unique constraint made the duplicate a no-op.`;
+            showNote($("dup-note"),
+              `Two identical messages raced in at the same moment. HookIt recognized them as the ` +
+                `same message and <b>kept exactly one</b>.`,
+              `Both POSTs carried the same <code>Idempotency-Key</code> (${esc(r.idempotency_key)}). ` +
+                `Both responses returned the same <code>event_id</code> ${esc(a.event_id.slice(0, 8))}… and ` +
+                `${a.queued_deliveries ?? "?"} delivery was created — the unique constraint at ingestion made the duplicate a no-op.`);
           } else {
-            note.innerHTML = `Responses: HTTP ${a.status} (event_id ${esc(a.event_id || "—")}) vs ` +
-              `HTTP ${b.status} (event_id ${esc(b.event_id || "—")}) — <b class="bad">not deduplicated</b>.`;
+            showNote($("dup-note"),
+              `The two copies were treated as <b class="bad">different messages</b> — that should never happen.`,
+              `Responses: HTTP ${a.status} (event_id ${esc(a.event_id || "—")}) vs HTTP ${b.status} (event_id ${esc(b.event_id || "—")}).`);
           }
         }));
 
       $("health-btn").addEventListener("click", () => {
         const next = !health;
-        act($("health-btn"), next ? "Restoring…" : "Bringing down…", async () => {
+        act($("health-btn"), "Switching…", async () => {
           const r = await api("/showcase/health", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -656,16 +824,20 @@
 
       $("force-dlq").addEventListener("click", () => {
         act($("force-dlq"), "Fast-forwarding…", async () => {
-          try { await api("/showcase/dead-letter", { method: "POST" }); }
-          catch (err) {
-            if (err.status === 409) { alert("Bring the pipeline down first."); return; }
+          try {
+            await api("/showcase/dead-letter", { method: "POST" });
+            showNote($("receiver-note"),
+              `One failing message was fast-forwarded through its remaining tries and <b>set aside</b>. ` +
+                `It's safe, not lost — switch the receiver back on and deliver it.`);
+          } catch (err) {
+            if (err.status === 409) { showNote($("receiver-note"), "Switch the receiver off first — messages are only set aside while it's off."); return; }
             throw err;
           }
         });
       });
 
       $("forge-btn").addEventListener("click", () =>
-        act($("forge-btn"), "Forging…", async () => {
+        act($("forge-btn"), "Sending…", async () => {
           if (!lifecycle) throw new Error("receiver not resolved yet");
           const res = await fetch(apiBase() + "/showcase/receiver/" + lifecycle.receiver_endpoint_id, {
             method: "POST",
@@ -673,11 +845,16 @@
             body: JSON.stringify({ type: "price.tick", payload: { symbol: "BTC-USD", price: "999999", forged: true } }),
           });
           if (res.status !== 401) throw new Error("expected 401, got HTTP " + res.status);
-          // Success is the rejection: it shows in the inbox as ✗ unsigned → 401.
+          // Success is the rejection: it shows in the mailbox as rejected.
+          showNote($("receiver-note"),
+            `Your fake message was <b class="bad">turned away</b> — it had no seal. ` +
+              `Find it in the mailbox below, marked &ldquo;rejected&rdquo;.`,
+            `The browser POSTed an unsigned payload straight to the receiver. The constant-time ` +
+              `HMAC-SHA256 check rejected it with HTTP 401; it never touched a delivery.`);
         }));
 
       $("redrive-link").addEventListener("click", () => {
-        act($("redrive-link"), "Redriving…", async () => {
+        act($("redrive-link"), "Delivering…", async () => {
           await api("/showcase/redrive", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -687,10 +864,8 @@
       });
 
       // ---- two-banks ledger: chaos controls --------------------------------
-      function ledgerNote(html) {
-        const note = $("ledger-note");
-        note.hidden = false;
-        note.innerHTML = html;
+      function ledgerNote(plain, why) {
+        showNote($("ledger-note"), plain, why);
       }
       async function setBothBanks(mode) {
         await Promise.all(["naive", "safe"].map((bank) =>
@@ -706,42 +881,62 @@
 
       $("lostack-btn").addEventListener("click", () => {
         const restoring = anyBankMode("flaky");
-        act($("lostack-btn"), restoring ? "Restoring…" : "Dropping…", async () => {
+        act($("lostack-btn"), "Switching…", async () => {
           await setBothBanks(restoring ? "healthy" : "flaky");
-          ledgerNote(restoring
-            ? `Acks restored — pending retries will now succeed. Bank A is left holding the double credits; ` +
-              `<b>Bank B never re-applied a retry</b>, because each delivery's stable <code>event_id</code> was already in its processed table.`
-            : `Both banks now <b>process each webhook, then fail to respond</b>. The platform can't tell "processed" from "lost" — ` +
-              `so it correctly retries. Bank A credits the same trade twice; Bank B dedupes on <code>event_id</code>. Click again to restore acks.`);
+          if (restoring) {
+            ledgerNote(
+              `Confirmations are back. Bank A is stuck with the trades it counted twice; ` +
+                `<b>Bank B never counted a repeat</b>.`,
+              `Pending retries now succeed. Bank B's dedupe on the stable <code>event_id</code> made every re-delivery a no-op; ` +
+                `Bank A re-applied them.`);
+          } else {
+            ledgerNote(
+              `Both banks are still processing trades — they've just <b>stopped saying &ldquo;got it&rdquo;</b>. ` +
+                `HookIt can't tell &ldquo;done&rdquo; from &ldquo;lost&rdquo;, so it sends each trade again. ` +
+                `Watch Bank A count trades twice. Click the button again to restore the confirmations.`,
+              `Without a 2xx acknowledgment, at-least-once delivery requires a retry. Bank A re-applies each retry; ` +
+                `Bank B finds the delivery's <code>event_id</code> already in its processed table and answers 200 without re-applying.`);
+          }
         });
       });
 
       $("timetravel-btn").addEventListener("click", () => {
         const restoring = anyBankMode("down");
-        act($("timetravel-btn"), restoring ? "Restoring…" : "Unplugging…", async () => {
+        act($("timetravel-btn"), "Switching…", async () => {
           await setBothBanks(restoring ? "healthy" : "down");
-          ledgerNote(restoring
-            ? `Banks are back. Queued retries now arrive <b>interleaved with fresh trades — out of order</b>. Bank A stamps ` +
-              `"last trade" by arrival order and shows stale state (⏳); Bank B compares the event's <code>executed_at</code> timestamp and rejects stale overwrites.`
-            : `Both banks are <b>down</b>; every delivery fails and queues as a retry with exponential backoff (watch the timeline below). ` +
-              `Click again to restore and watch old retries race fresh trades.`);
+          if (restoring) {
+            ledgerNote(
+              `The banks are back. Held messages are arriving <b>mixed in with brand-new ones</b> — ` +
+                `watch Bank B refuse to let old news overwrite new.`,
+              `Ordering isn't guaranteed once retries are in play. Bank A stamps &ldquo;last trade&rdquo; by arrival order and ` +
+                `shows stale state; Bank B compares the signed <code>executed_at</code> timestamp and rejects stale overwrites.`);
+          } else {
+            ledgerNote(
+              `Both banks are <b>offline</b>. HookIt is holding every trade and quietly retrying — ` +
+                `bring them back whenever you're ready.`,
+              `Every delivery fails and requeues with exponential backoff. The same retry machinery is visible ` +
+                `try-by-try in the delivery tracking list in Story 2.`);
+          }
         });
       });
 
       $("storm-btn").addEventListener("click", () =>
-        act($("storm-btn"), "Flooding…", async () => {
+        act($("storm-btn"), "Sending…", async () => {
           const r = await api("/showcase/burst", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ same_account: true }),
           });
-          if (!r || !r.published) { alert("Producer unreachable — no storm fired. Is `python -m producer` running?"); return; }
-          ledgerNote(`${r.published} concurrent trades hit <b>one account</b> across parallel workers. Bank A's read-modify-write ` +
-            `interleaves and a trade evaporates from its balance; Bank B's <code>SELECT … FOR UPDATE</code> serializes the writes to the exact total.`);
+          if (!r || !r.published) { ledgerNote(SENDER_DOWN); return; }
+          ledgerNote(
+            `${r.published} trades just hit <b>one account</b> at the same moment. ` +
+              `Bank A loses one in the scramble; Bank B stays exact.`,
+            `Parallel workers deliver the trades concurrently. Bank A's read → modify → write interleaves and drops an update; ` +
+              `Bank B's <code>SELECT … FOR UPDATE</code> serializes the writes to the exact total.`);
         }));
 
       $("forge-ledger-btn").addEventListener("click", () =>
-        act($("forge-ledger-btn"), "Forging…", async () => {
+        act($("forge-ledger-btn"), "Sending…", async () => {
           if (!ledgerData) throw new Error("banks not resolved yet");
           const account = (ledgerData.banks[0].accounts[0] || {}).account || "mallory";
           const forged = JSON.stringify({
@@ -762,9 +957,12 @@
             return [b.bank, res.status];
           }));
           const by = Object.fromEntries(statuses);
-          ledgerNote(`An <b>unsigned</b> $5,000 trade was POSTed straight at both banks from your browser. Bank A answered ` +
-            `HTTP ${by.naive} and booked money that never existed — it isn't in the platform's event log, so it shows as pure drift. ` +
-            `Bank B's constant-time HMAC check answered <b>HTTP ${by.safe}</b> and its ledger never moved.`);
+          ledgerNote(
+            `A fake $5,000 trade was sent straight to both banks, skipping HookIt entirely. ` +
+              `Bank A <b class="bad">accepted it and booked money that never existed</b>. Bank B turned it away.`,
+            `The request carried no HMAC signature. Bank A answered HTTP ${by.naive} and applied it — the trade isn't in ` +
+              `the platform's event log, so it shows as pure drift. Bank B's constant-time HMAC check answered HTTP ${by.safe} ` +
+              `and its ledger never moved.`);
         }));
 
       // ---- two-banks ledger: rendering -------------------------------------
@@ -775,23 +973,23 @@
         return (n < 0 ? "−$" : "$") + abs;
       }
       function bankMeter(b) {
-        if (b.reconciled) return `<span class="bank-meter ok">✓ reconciled</span>`;
+        if (b.reconciled) return `<span class="bank-meter ok">✓ books balance</span>`;
         if (b.pending_deliveries > 0)
-          return `<span class="bank-meter sync">syncing — ${b.pending_deliveries} in flight</span>`;
-        return `<span class="bank-meter bad">${fmtMoney(b.total_drift)} drift</span>`;
+          return `<span class="bank-meter sync">syncing — ${b.pending_deliveries} still on the way</span>`;
+        return `<span class="bank-meter bad">off by ${fmtMoney(b.total_drift)}</span>`;
       }
       function bankModePill(mode) {
-        if (mode === "healthy") return `<span class="pill up">● healthy</span>`;
-        if (mode === "flaky") return `<span class="pill flaky">● flaky — drops acks</span>`;
-        return `<span class="pill down">● down</span>`;
+        if (mode === "healthy") return `<span class="pill up">● open</span>`;
+        if (mode === "flaky") return `<span class="pill flaky">● not confirming</span>`;
+        return `<span class="pill down">● offline</span>`;
       }
       function accountRow(a) {
         const driftCls = a.reconciled ? "drift-ok" : "drift-bad";
-        const drift = a.reconciled ? "±$0.00" : fmtMoney(a.drift);
-        const stale = a.status_stale ? ` <span class="stale-tag">⏳ stale</span>` : "";
-        return `<tr><td class="mono">${esc(a.account)}</td>` +
-          `<td class="mono num">${fmtMoney(a.balance)}</td>` +
-          `<td class="mono num ${driftCls}">${drift}</td>` +
+        const drift = a.reconciled ? "✓" : fmtMoney(a.drift);
+        const stale = a.status_stale ? ` <span class="stale-tag">outdated</span>` : "";
+        return `<tr><td>${esc(a.account)}</td>` +
+          `<td class="num">${fmtMoney(a.balance)}</td>` +
+          `<td class="num ${driftCls}">${drift}</td>` +
           `<td>${esc(a.status || "—")}${stale}</td></tr>`;
       }
       function bankTailRow(r) {
@@ -804,31 +1002,43 @@
       function bankCard(b) {
         const isNaive = b.bank === "naive";
         const backlog = [];
-        if (b.pending_deliveries > 0) backlog.push(`${b.pending_deliveries} delivery${b.pending_deliveries === 1 ? "" : "s"} retrying / in flight`);
-        if (b.dead_lettered_deliveries > 0) backlog.push(`${b.dead_lettered_deliveries} dead-lettered (redrive to recover)`);
+        if (b.pending_deliveries > 0) backlog.push(`${plural(b.pending_deliveries, "message")} on the way`);
+        if (b.dead_lettered_deliveries > 0) backlog.push(`${b.dead_lettered_deliveries} set aside`);
         return `<div class="bank">` +
-          `<div class="bank-head"><span class="bank-name">${isNaive ? "Bank A · naive" : "Bank B · correct"}</span>` +
+          `<div class="bank-head"><span class="bank-name">${isNaive ? "Bank A · believes everything" : "Bank B · checks everything"}</span>` +
           bankModePill(b.mode) + bankMeter(b) + `</div>` +
           `<div class="bank-sub">${isNaive
-            ? "applies whatever arrives, in arrival order — no signature check, no dedupe, no locks"
-            : "verifies HMAC, dedupes on <code>event_id</code>, applies under a row lock, rejects stale timestamps"}</div>` +
+            ? "books whatever arrives, no questions asked"
+            : "checks the seal, skips repeats, takes turns, ignores stale news"}</div>` +
           (b.accounts.length
-            ? `<table class="accounts"><tr><th>account</th><th class="num">balance</th><th class="num">drift</th><th>last trade</th></tr>` +
+            ? `<table class="accounts"><tr><th>account</th><th class="num">balance</th><th class="num">off by</th><th>last trade</th></tr>` +
               b.accounts.map(accountRow).join("") + `</table>`
             : `<p class="msg">No trades yet.</p>`) +
           (backlog.length ? `<div class="bank-backlog">${backlog.join(" · ")}</div>` : "") +
-          (b.tail.length ? `<div class="bank-tail">${b.tail.map(bankTailRow).join("")}</div>` : "") +
           `</div>`;
+      }
+      function bankRules(b) {
+        return b.bank === "naive"
+          ? `<b>Bank A — no checks.</b> No signature verification, no dedupe; balance updates are read → write with no lock; &ldquo;last trade&rdquo; is stamped by arrival order.`
+          : `<b>Bank B — the correct receiver.</b> Constant-time HMAC-SHA256 verification; dedupe via a processed-events table keyed on <code>event_id</code>; balance updates under <code>SELECT … FOR UPDATE</code>; stale <code>executed_at</code> timestamps rejected.`;
+      }
+      function renderUthBanks() {
+        if (!ledgerData) return;
+        $("uth-banks").innerHTML = ledgerData.banks.map((b) =>
+          `<div class="uth-bank"><p class="uth-note">${bankRules(b)}</p>` +
+          (b.tail.length ? b.tail.map(bankTailRow).join("") : `<p class="uth-note">No requests received yet.</p>`) +
+          `</div>`).join("");
       }
       function renderBanks() {
         if (!ledgerData) return;
         $("banks-wrap").innerHTML = ledgerData.banks.map(bankCard).join("");
+        renderUthBanks();
         const flaky = anyBankMode("flaky"), down = anyBankMode("down");
         const lostack = $("lostack-btn"), tt = $("timetravel-btn");
-        lostack.textContent = flaky ? "Restore acks ✅" : "Drop acks 📉";
+        lostack.textContent = flaky ? "Restore the confirmations" : "Lose the confirmations";
         lostack.className = flaky ? "" : "danger";
         lostack.disabled = down;
-        tt.textContent = down ? "Plug it back in 🔌" : "Pull the plug 🔌";
+        tt.textContent = down ? "Bring the banks back" : "Take both banks offline";
         tt.className = down ? "" : "ghost";
         tt.disabled = flaky;
       }
@@ -837,12 +1047,12 @@
         const pill = $("health-pill");
         const btn = $("health-btn");
         if (health) {
-          pill.className = "pill up"; pill.textContent = "● Healthy";
-          btn.textContent = "Bring pipeline down"; btn.className = "danger";
+          pill.className = "pill up"; pill.textContent = "● accepting messages";
+          btn.textContent = "Switch the receiver off"; btn.className = "danger";
           $("force-dlq-wrap").hidden = true;
         } else {
-          pill.className = "pill down"; pill.textContent = "● Down";
-          btn.textContent = "Restore pipeline"; btn.className = "";
+          pill.className = "pill down"; pill.textContent = "● offline";
+          btn.textContent = "Switch it back on"; btn.className = "";
           $("force-dlq-wrap").hidden = false;
         }
         $("redrive-wrap").hidden = dlqDepth === 0;
@@ -858,27 +1068,27 @@
       function renderMap(summary, feed) {
         const latest = feed.events[0];
         $("map-producer").textContent = latest
-          ? `last event ${latest.type} · ${fmtTime(latest.created_at)}`
-          : "no events yet";
-        const bits = [`${summary.totals.succeeded} delivered`];
-        if (summary.totals.failed) bits.push(`${summary.totals.failed} retrying`);
-        if (summary.dlq_depth) bits.push(`${summary.dlq_depth} dead-lettered`);
+          ? `last message: ${plainType(latest.type)} · ${fmtClock(latest.created_at)}`
+          : "no messages yet";
+        const bits = [`${summary.totals.succeeded.toLocaleString()} delivered`];
+        if (summary.totals.failed) bits.push(`${summary.totals.failed} being retried`);
+        if (summary.dlq_depth) bits.push(`${summary.dlq_depth} set aside`);
         $("map-engine").textContent = bits.join(" · ");
 
         const discordOn = !!(feed.discord_widget_server_id && feed.discord_widget_channel_id);
-        setMapDest("mdot-discord", "map-discord", discordOn ? "ok" : "", discordOn ? "delivering live" : "not configured");
-        setMapDest("mdot-pipe", "map-pipe", feed.healthy ? "ok" : "bad",
-          feed.healthy ? "healthy" : "down — retrying");
+        setMapDest("mdot-discord", "map-discord", discordOn ? "ok" : "", discordOn ? "receiving live" : "not set up here");
+        setMapDest("mdot-pipe", "map-pipe", feed.healthy ? "ok" : "warn",
+          feed.healthy ? "accepting messages" : "offline — HookIt is retrying");
 
         if (ledgerData && ledgerData.banks.length) {
           const naive = ledgerData.banks.find((b) => b.bank === "naive");
           const syncing = ledgerData.banks.some((b) => b.pending_deliveries > 0);
           if (naive && !naive.reconciled && !syncing) {
-            setMapDest("mdot-banks", "map-banks", "bad", `Bank A drifting ${fmtMoney(naive.total_drift)}`);
+            setMapDest("mdot-banks", "map-banks", "bad", `Bank A's books are off by ${fmtMoney(naive.total_drift)}`);
           } else if (syncing) {
-            setMapDest("mdot-banks", "map-banks", "warn", "syncing after failures");
+            setMapDest("mdot-banks", "map-banks", "warn", "catching up after trouble");
           } else {
-            setMapDest("mdot-banks", "map-banks", "ok", "both reconciled");
+            setMapDest("mdot-banks", "map-banks", "ok", "books balance ✓");
           }
         }
       }
@@ -889,39 +1099,48 @@
         discordLoaded = false; start();
       });
 
-      // ---- rendering: metrics cards --------------------------------------
-      function statCard(label, value, cls = "", sub = "") {
-        return `<div class="card"><div class="label">${label}</div>` +
-          `<div class="value ${cls}">${value}</div>` +
-          (sub ? `<div class="sub">${sub}</div>` : "") + `</div>`;
+      // ---- rendering: hero pulse sentence + under-the-hood metrics --------
+      function plural(n, word) { return `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`; }
+      function renderPulse(s) {
+        const pulse = $("pulse");
+        const bits = [`<b>${plural(s.totals.succeeded, "message")} delivered</b>`];
+        if (s.totals.failed) bits.push(`${s.totals.failed.toLocaleString()} being retried`);
+        if (s.dlq_depth) bits.push(`${s.dlq_depth.toLocaleString()} set aside`);
+        pulse.innerHTML = bits.join(" · ");
+        pulse.hidden = false;
       }
-      function renderCards(s) {
+      function renderStats(s) {
         const rate = s.success_rate == null ? "—" : (s.success_rate * 100).toFixed(1) + "%";
-        const rateCls = s.success_rate == null ? "" : s.success_rate >= 0.99 ? "green" : s.success_rate >= 0.9 ? "amber" : "red";
-        const p95 = s.latency_ms ? Math.round(s.latency_ms.p95) + " ms" : "—";
-        const p95sub = s.latency_ms ? `p50 ${Math.round(s.latency_ms.p50)} · p99 ${Math.round(s.latency_ms.p99)} ms` : "no timed attempts";
-        $("cards").innerHTML =
-          statCard("Total", s.totals.all) +
-          statCard("Succeeded", s.totals.succeeded, "green") +
-          statCard("In flight", s.totals.in_flight, "", `${s.totals.pending} pending`) +
-          statCard("Retrying", s.totals.failed, s.totals.failed ? "amber" : "") +
-          statCard("Dead-letter", s.dlq_depth, s.dlq_depth ? "red" : "") +
-          statCard("Success rate", rate, rateCls, `${s.attempts_total} attempts`) +
-          statCard("Latency p95", p95, "", p95sub) +
-          statCard("Throughput", s.throughput_per_min.toFixed(0), "", "succeeded / min");
+        const lat = s.latency_ms
+          ? `p50 ${Math.round(s.latency_ms.p50)} · p95 ${Math.round(s.latency_ms.p95)} · p99 ${Math.round(s.latency_ms.p99)} ms`
+          : "no timed attempts yet";
+        const row = (label, value) => `<tr><td>${label}</td><td>${value}</td></tr>`;
+        $("uth-stats").innerHTML = `<table class="stats-table">` +
+          row("deliveries total", s.totals.all.toLocaleString()) +
+          row("succeeded", s.totals.succeeded.toLocaleString()) +
+          row("in flight / pending", `${s.totals.in_flight} / ${s.totals.pending}`) +
+          row("retrying (failed, will retry)", s.totals.failed.toLocaleString()) +
+          row("dead-lettered", s.dlq_depth.toLocaleString()) +
+          row("success rate", `${rate} over ${plural(s.attempts_total, "attempt")}`) +
+          row("delivery latency", lat) +
+          row("throughput", `${s.throughput_per_min.toFixed(0)} succeeded / min`) +
+          `</table>`;
       }
 
-      // ---- rendering: live price feed ------------------------------------
-      function feedRow(e) {
+      // ---- rendering: live message feed ------------------------------------
+      const FEED_MAX_ROWS = 6; // keep the visible stream calm
+      let feedPrevFirstId = null;
+      function feedRow(e, isNew) {
         const p = e.payload || {};
+        const rowCls = isNew ? "feed-row new" : "feed-row";
         if (e.type === "trade.executed") {
           const buy = p.side === "buy";
-          return `<div class="feed-row">` +
+          return `<div class="${rowCls}">` +
             `<span class="tag trade">trade</span>` +
-            `<span class="sym mono">${esc(p.account || "?")}</span>` +
-            `<span class="px mono">${fmtMoney(p.amount)}</span>` +
-            `<span class="chg ${buy ? "green" : "red"} mono">${buy ? "▲ buy" : "▼ sell"} ${esc(p.symbol || "")}</span>` +
-            `<span class="time mono">${fmtTime(e.created_at)}</span></div>`;
+            `<span class="sym">${esc(p.account || "?")}</span>` +
+            `<span class="px">${fmtMoney(p.amount)}</span>` +
+            `<span class="chg ${buy ? "green" : "red"}">${buy ? "▲ buy" : "▼ sell"} ${esc(p.symbol || "")}</span>` +
+            `<span class="time">${fmtClock(e.created_at)}</span></div>`;
         }
         const dir = p.direction;
         const arrow = dir === "up" ? "▲" : dir === "down" ? "▼" : "•";
@@ -929,17 +1148,26 @@
         const isAlert = e.type === "price.alert";
         const price = p.price != null ? fmtPrice(p.price, p.quote) : "";
         const pct = p.change_pct != null ? p.change_pct + "%" : "";
-        return `<div class="feed-row">` +
-          `<span class="tag ${isAlert ? "alert" : "tick"}">${isAlert ? "alert" : "tick"}</span>` +
-          `<span class="sym mono">${esc(p.symbol || e.type)}</span>` +
-          `<span class="px mono">${esc(price)}</span>` +
-          `<span class="chg ${cls} mono">${arrow} ${esc(pct)}</span>` +
-          `<span class="time mono">${fmtTime(e.created_at)}</span></div>`;
+        return `<div class="${rowCls}">` +
+          `<span class="tag ${isAlert ? "alert" : "tick"}">${isAlert ? "price alert" : "price"}</span>` +
+          `<span class="sym">${esc(p.symbol || plainType(e.type))}</span>` +
+          `<span class="px">${esc(price)}</span>` +
+          `<span class="chg ${cls}">${arrow} ${esc(pct)}</span>` +
+          `<span class="time">${fmtClock(e.created_at)}</span></div>`;
       }
       function renderFeed(events) {
-        $("feed-wrap").innerHTML = events.length
-          ? events.map(feedRow).join("")
-          : `<p class="msg">No events yet. The producer publishes every few seconds — if this stays empty, the producer service isn't running (<code>python -m producer</code>).</p>`;
+        const shown = events.slice(0, FEED_MAX_ROWS);
+        if (!shown.length) {
+          $("feed-wrap").innerHTML = `<p class="msg">No messages yet — the demo sender publishes every few seconds.</p>`;
+          return;
+        }
+        // Only rows newer than the previous top row fade in; everything else stays still.
+        let seen = false;
+        $("feed-wrap").innerHTML = shown.map((e) => {
+          if (e.id === feedPrevFirstId) seen = true;
+          return feedRow(e, feedPrevFirstId !== null && !seen);
+        }).join("");
+        feedPrevFirstId = shown[0].id;
       }
 
       // ---- rendering: delivery lifecycle timeline -------------------------
@@ -965,6 +1193,16 @@
           `<span class="note">0 duplicate attempts — enforced by <code>UNIQUE(delivery_id, attempt_number)</code></span>`;
       }
       function fmtSecs(ms) { return (ms / 1000).toFixed(1) + "s"; }
+      function fmtSecsWhole(ms) { return Math.max(0, Math.ceil(ms / 1000)) + "s"; }
+      function fmtClock(iso) {
+        return iso ? new Date(iso).toLocaleTimeString([], { hour12: false }) : "—";
+      }
+      function plainType(t) {
+        return t === "price.tick" ? "price update"
+          : t === "price.alert" ? "price alert"
+          : t === "trade.executed" ? "trade"
+          : t;
+      }
       function nominalDelay(attemptNumber, cfg) {
         // Mirrors app/worker/backoff.py: min(base * 2^(n-1), cap), before jitter.
         return Math.min(cfg.retry_base_seconds * Math.pow(2, attemptNumber - 1), cfg.retry_cap_seconds) * 1000;
@@ -976,7 +1214,59 @@
         }
         return `<span class="status-code err" title="${esc(a.error || "")}">network error</span>`;
       }
-      function deliveryRow(d, cfg) {
+      // The plain-language layer: a parcel-tracking view of each delivery.
+      function statusWord(d) {
+        if (d.status === "succeeded") return `<span class="badge succeeded">delivered ✓</span>`;
+        if (d.status === "dead_lettered") return `<span class="badge dead_lettered">set aside ✋</span>`;
+        if (d.status === "in_flight") return `<span class="badge in_flight">on its way</span>`;
+        if (d.attempt_count > 0) return `<span class="badge pending">retrying ⏳</span>`;
+        return `<span class="badge pending">queued</span>`;
+      }
+      function tryCls(a) {
+        if (a.response_status != null && a.response_status < 400) return "ok";
+        if (a.response_status === 401) return "bad";
+        return "wait";
+      }
+      function tryOutcome(a) {
+        if (a.response_status != null) {
+          if (a.response_status < 400) return `<span class="ok-txt">delivered ✓</span>`;
+          if (a.response_status === 401) return `<span class="bad-txt">turned away — no seal</span>`;
+          if (a.response_status === 503) return `<span class="wait-txt">the receiver was offline</span>`;
+          return `<span class="wait-txt">the receiver answered with an error</span>`;
+        }
+        return `<span class="wait-txt">no answer</span>`;
+      }
+      function trackRow(d) {
+        const now = serverNow();
+        let countdown = "";
+        if (d.status === "pending" && d.attempt_count > 0) {
+          const left = new Date(d.next_attempt_at).getTime() - now;
+          countdown = left > 0
+            ? `<span class="countdown">trying again in ${fmtSecsWhole(left)}</span>`
+            : `<span class="countdown">trying again now…</span>`;
+        } else if (d.status === "in_flight") {
+          countdown = `<span class="countdown lease">a courier has it right now</span>`;
+        }
+        let rows = "";
+        for (let i = 0; i < d.attempts.length; i++) {
+          const a = d.attempts[i];
+          rows += `<div class="tl-attempt ${tryCls(a)}"><span class="num">Try ${a.attempt_number}</span>` +
+            tryOutcome(a) +
+            `<span class="when">${fmtClock(a.created_at)}</span></div>`;
+          const next = d.attempts[i + 1];
+          if (next) {
+            const gap = new Date(next.created_at).getTime() - new Date(a.created_at).getTime();
+            rows += `<div class="tl-gap">waited <b>${fmtSecsWhole(gap)}</b> before trying again</div>`;
+          }
+        }
+        return `<div class="dl-item"><div class="dl-head">` +
+          statusWord(d) +
+          `<span class="evt">${esc(plainType(d.event_type))}</span>` +
+          countdown +
+          `</div>` + (rows ? `<div class="tl">${rows}</div>` : "") + `</div>`;
+      }
+      // The technical layer: HTTP codes, durations, workers, and backoff math.
+      function techRow(d, cfg) {
         const now = serverNow();
         let countdown = "";
         if (d.status === "pending" && d.attempt_count > 0) {
@@ -1021,31 +1311,34 @@
         if (!lifecycle) return;
         renderWorkers(lifecycle.workers);
         $("lifecycle-wrap").innerHTML = lifecycle.deliveries.length
-          ? lifecycle.deliveries.map((d) => deliveryRow(d, lifecycle)).join("")
-          : `<p class="msg">No deliveries yet — they appear here the moment the producer's next tick fans out.</p>`;
+          ? lifecycle.deliveries.map(trackRow).join("")
+          : `<p class="msg">No deliveries yet — the next message from the sender will appear here.</p>`;
+        $("uth-tracking").innerHTML = lifecycle.deliveries.length
+          ? lifecycle.deliveries.map((d) => techRow(d, lifecycle)).join("")
+          : `<p class="uth-note">No deliveries yet.</p>`;
       }
 
-      // ---- rendering: request inbox --------------------------------------
+      // ---- rendering: receiver mailbox --------------------------------------
       function prettyBody(body) {
         try { return JSON.stringify(JSON.parse(body), null, 2); } catch { return body; }
       }
       function inboxItem(r) {
         const cls = r.response_status < 400 ? "ok" : "err";
-        const label = r.response_status === 200 ? "200 accepted"
-          : r.response_status === 503 ? "503 pipeline down"
-          : r.response_status === 401 ? "401 bad signature"
-          : String(r.response_status);
+        const label = r.response_status === 200 ? "accepted ✓"
+          : r.response_status === 503 ? "receiver offline"
+          : r.response_status === 401 ? "rejected — no seal"
+          : `answered ${r.response_status}`;
         const sig = r.verified
-          ? `<span class="sig ok">🔒 verified</span>`
-          : `<span class="sig err">✗ unsigned</span>`;
+          ? `<span class="sig ok">🔒 sealed</span>`
+          : `<span class="sig err">✗ no seal</span>`;
         const open = inboxOpen.has(r.id);
         let body = `<div class="inbox-item"><div class="inbox-head" data-inbox="${r.id}">` +
           `<span class="status-code ${cls}">${label}</span>` +
-          `<span class="evt">${esc(r.event_type)}</span>` +
-          `<span class="attempt">attempt ${r.attempt}</span>${sig}` +
-          `<span class="time mono">${fmtTime(r.received_at)}</span></div>`;
+          `<span class="evt">${esc(plainType(r.event_type))}</span>` +
+          `<span class="attempt">try ${r.attempt}</span>${sig}` +
+          `<span class="time">${fmtClock(r.received_at)}</span></div>`;
         if (open) {
-          body += `<div class="inbox-body"><div class="hdrs">` +
+          body += `<div class="inbox-body"><p class="env-label">The raw envelope — exactly what your receiver was handed</p><div class="hdrs">` +
             `<span class="hk">POST</span> …/showcase/receiver/…\n` +
             `<span class="hk">X-Webhook-Timestamp:</span> ${esc(r.timestamp_header || "—")}\n` +
             `<span class="hk">X-Webhook-Signature:</span> ${esc(r.signature_header || "—")}\n` +
@@ -1057,7 +1350,7 @@
       function renderInbox(items) {
         $("inbox-wrap").innerHTML = items.length
           ? items.map(inboxItem).join("")
-          : `<p class="msg">Nothing received yet — deliveries that reach your endpoint show up here with their real HMAC signature.</p>`;
+          : `<p class="msg">Nothing here yet — messages that reach your receiver appear here.</p>`;
         $("inbox-wrap").querySelectorAll("[data-inbox]").forEach((el) =>
           el.addEventListener("click", () => {
             const id = el.dataset.inbox;
@@ -1081,7 +1374,7 @@
       function setLive(on) {
         $("live-dot").classList.toggle("live", on);
         document.body.classList.toggle("live", on);
-        $("live-label").textContent = on ? "live — polling every 2s" : "offline";
+        $("live-label").textContent = on ? "live" : "connection lost — retrying";
       }
       async function refresh() {
         try {
@@ -1095,7 +1388,8 @@
           lifecycle = dels;
           ledgerData = ledger;
           serverDelta = new Date(dels.server_time).getTime() - Date.now();
-          renderCards(summary);
+          renderPulse(summary);
+          renderStats(summary);
           renderFeed(feed.events);
           renderLifecycle();
           renderBanks();
@@ -1106,7 +1400,7 @@
           setLive(true);
         } catch (e) {
           setLive(false);
-          $("feed-wrap").innerHTML = `<p class="msg error">Could not reach the showcase API (${e.status ? "HTTP " + e.status : e.message}).</p>`;
+          $("feed-wrap").innerHTML = `<p class="msg">Can't reach HookIt right now — retrying automatically.</p>`;
         }
       }
       function start() {
@@ -1115,8 +1409,9 @@
         renderHealth();
         refresh();
         timer = setInterval(refresh, 2000);
-        // Countdowns tick between polls from the cached snapshot.
-        tickTimer = setInterval(renderLifecycle, 250);
+        // Countdowns tick between polls from the cached snapshot; whole seconds
+        // in the visible layer, so once per second is enough.
+        tickTimer = setInterval(renderLifecycle, 1000);
       }
 
       start();

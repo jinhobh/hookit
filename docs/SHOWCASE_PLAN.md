@@ -25,6 +25,24 @@ passing checks. Phases map one-to-one to issues unless noted.
    to the single seeded showcase project so no customer data is reachable.
 3. **The viewer is a stranger.** Every chaos button gets one on-screen sentence
    explaining what just broke and which platform guarantee handled it.
+4. **Plain language outside, engineering inside.** The visible layer of the
+   dashboard uses the package-delivery vocabulary below and never shows jargon,
+   codes, or formulas; all technical evidence lives in collapsed
+   "🔧 Under the hood" / "Why?" expanders. New panels must keep this register.
+
+   | Engineer term | On-screen term |
+   |---|---|
+   | event / webhook | message |
+   | delivery attempt / HTTP 2xx | try / delivered ✓ |
+   | exponential backoff + jitter | waits a little longer between tries |
+   | 503 / unhealthy receiver | the receiver is offline |
+   | dead-letter | set aside ✋ (safe, not lost) |
+   | redrive | deliver the set-aside messages |
+   | HMAC signature / 401 | seal / turned away — no seal, rejected |
+   | idempotency / dedupe | never counted twice / ignored the copy |
+   | worker / claim / lease | courier / a courier has it right now |
+   | producer | the demo sender (a small trading app) |
+   | drift | the books are off by $X |
 
 ---
 
