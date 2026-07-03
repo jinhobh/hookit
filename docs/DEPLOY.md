@@ -152,14 +152,35 @@ python tools/demo_receiver.py --secret "<the-endpoint-signing-secret>" --port 88
 
 - **Scale the worker** (more throughput): `fly scale count worker=2 --app YOUR-APP`
   — the `FOR UPDATE SKIP LOCKED` claim model makes multiple workers safe.
-- **Cost control**: set `min_machines_running = 0` in `fly.toml` to let the `app`
-  auto-stop when idle (adds a cold-start delay on the next request). The `worker`
-  is meant to be a continuous poller, but — unlike `app` — it isn't fronted by
-  `http_service`, so Fly's automatic restart-on-request only covers `app`; if a
-  `worker` machine ever gets stopped (manually, or by a host event), nothing
-  brings it back automatically. Check `fly status --app YOUR-APP` if deliveries
-  stop progressing past `pending`, and `fly machine start <id>` if a worker
-  shows `stopped`.
+- **Cost control**: `min_machines_running = 0` in `fly.toml` lets `app` auto-stop
+  when idle (adds a cold-start delay on the next request) via `http_service`.
+  `worker` and `producer` aren't fronted by `http_service`, so Fly has no idle
+  signal for them on its own — and `producer`'s own poll/trade loops keep
+  posting to `app`'s public URL every few seconds, which used to defeat `app`'s
+  idle detection too. The app now runs its own **idle watchdog**
+  (`app/services/idle_watchdog.py`) instead: it tracks real dashboard visits
+  (via `GET /showcase/summary|feed|deliveries`, ignoring `producer`'s own
+  traffic) and stops the `producer`/`worker` machines after
+  `VISITOR_IDLE_MINUTES` (default 10) with nobody watching, using the Fly
+  Machines API directly. Once `producer` stops generating self-traffic, `app`'s
+  own `http_service` autostop starts working too, so `min_machines_running = 0`
+  now meaningfully applies to all three process groups. The next real visitor
+  triggers `app`'s normal auto-start, which in turn wakes `producer`/`worker`
+  back up (a few seconds' cold start).
+
+  Requires one more secret — a Machines-API-scoped token:
+
+  ```bash
+  fly secrets set --app YOUR-APP \
+    FLY_API_TOKEN="$(fly tokens create deploy --app YOUR-APP)"
+  ```
+
+  `FLY_APP_NAME` does **not** need to be set manually — Fly injects it into
+  every machine's environment automatically, and the app picks it up from
+  there. Leaving `FLY_API_TOKEN` unset disables the watchdog entirely (both
+  `producer` and `worker` run continuously, as before). Check `fly status
+  --app YOUR-APP` if deliveries stop progressing past `pending`, and `fly
+  machine start <id>` to bring a stopped machine back manually.
 - **Migrations only** (without a full redeploy), run them from your laptop:
   ```bash
   fly proxy 5432 -a YOUR-APP-db          # in one terminal

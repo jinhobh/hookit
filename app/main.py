@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -20,10 +24,32 @@ from app.routers import (
     showcase,
     showcase_ledger,
 )
+from app.services.idle_watchdog import run_idle_watchdog, wake_showcase_machines
 
 _STATIC_DIR = Path(__file__).parent / "static"
 
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Wake the showcase producer/worker machines, then run the idle watchdog.
+
+    A no-op unless ``fly_api_token`` and ``fly_app_name`` are both set (true
+    only in the real Fly deployment) — see app.services.idle_watchdog.
+    """
+    settings = get_settings()
+    task: asyncio.Task[None] | None = None
+    if settings.fly_api_token and settings.fly_app_name:
+        await wake_showcase_machines(settings)
+        task = asyncio.create_task(run_idle_watchdog(settings))
+    try:
+        yield
+    finally:
+        if task is not None:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
 
 def create_app() -> FastAPI:
@@ -56,6 +82,7 @@ def create_app() -> FastAPI:
         title=settings.app_name,
         version="0.1.0",
         description="Reliable Webhook Delivery Platform — backend service.",
+        lifespan=_lifespan,
     )
 
     application.add_middleware(RequestIDMiddleware)

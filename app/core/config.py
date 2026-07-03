@@ -175,6 +175,37 @@ class Settings(BaseSettings):
         description="Public Discord channel id for the dashboard's embedded channel widget.",
     )
 
+    # --- Live showcase idle scale-down ---------------------------------------
+    # Stops the `producer`/`worker` Fly machines after a period with no real
+    # dashboard visitor (see app.services.idle_watchdog) and wakes them again on
+    # the next real visit, so they don't bill 24/7 for an unwatched demo.
+    fly_api_token: str = Field(
+        default="",
+        description=(
+            "Bearer token for the Fly Machines API (secret). Empty disables the "
+            "idle watchdog entirely — safe default for local dev/tests."
+        ),
+    )
+    fly_app_name: str = Field(
+        default="",
+        description=(
+            "Fly app name the Machines API calls target. Empty disables the idle "
+            "watchdog. In production this is picked up automatically from the "
+            "`FLY_APP_NAME` env var Fly injects into every machine — no fly.toml "
+            "change needed."
+        ),
+    )
+    visitor_idle_minutes: float = Field(
+        default=10.0,
+        gt=0.0,
+        description="Minutes with no real dashboard visitor before producer/worker machines stop.",
+    )
+    idle_watchdog_interval_seconds: float = Field(
+        default=60.0,
+        gt=0.0,
+        description="How often the idle watchdog checks visitor activity.",
+    )
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
