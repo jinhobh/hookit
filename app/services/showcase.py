@@ -51,12 +51,19 @@ logger = logging.getLogger(__name__)
 PRICE_TICK = "price.tick"
 PRICE_ALERT = "price.alert"
 PRICE_EVENT_TYPES: tuple[str, ...] = (PRICE_TICK, PRICE_ALERT)
+TRADE_EXECUTED = "trade.executed"
 
 # Reserved marker carried in the controllable receiver's event_types. Schemas
 # reject any ``__``-prefixed event_type on real, user-registered endpoints, so
 # this can never collide with a customer endpoint — and the receiver route uses
 # it to be certain it only ever serves the showcase receiver.
 SHOWCASE_MARKER = "__showcase__"
+
+# Markers for the two-banks ledger demo endpoints (same reserved-prefix rules).
+# Both banks subscribe to ``trade.executed``; the marker tells the bank routes
+# — and seeding/resolution — which endpoint is which.
+BANK_NAIVE_MARKER = "__showcase_bank_naive__"
+BANK_SAFE_MARKER = "__showcase_bank_safe__"
 
 # Advisory lock namespace for seeding; arbitrary, only ever used by this module.
 _ADVISORY_LOCK_NAMESPACE = 87_412_502
@@ -78,6 +85,8 @@ class ShowcaseHandles:
     project_id: uuid.UUID
     receiver_endpoint_id: uuid.UUID
     discord_endpoint_id: uuid.UUID | None
+    bank_naive_endpoint_id: uuid.UUID
+    bank_safe_endpoint_id: uuid.UUID
 
 
 # ---------------------------------------------------------------------------
@@ -119,6 +128,12 @@ def seed_showcase(session: Session, settings: Settings | None = None) -> Showcas
 
     receiver = _find_or_create_receiver(session, project, settings.public_base_url)
     discord = _find_or_create_discord(session, project, settings.showcase_discord_webhook_url)
+    bank_naive = _find_or_create_bank(
+        session, project, settings.public_base_url, BANK_NAIVE_MARKER, "naive"
+    )
+    bank_safe = _find_or_create_bank(
+        session, project, settings.public_base_url, BANK_SAFE_MARKER, "safe"
+    )
     _ensure_api_key(session, project, settings.showcase_api_key)
     session.flush()
 
@@ -126,6 +141,8 @@ def seed_showcase(session: Session, settings: Settings | None = None) -> Showcas
         project_id=project.id,
         receiver_endpoint_id=receiver.id,
         discord_endpoint_id=discord.id if discord is not None else None,
+        bank_naive_endpoint_id=bank_naive.id,
+        bank_safe_endpoint_id=bank_safe.id,
     )
 
 
@@ -157,6 +174,44 @@ def _find_or_create_receiver(session: Session, project: Project, public_base_url
     # key (no ORM relationship), so the unit of work won't order the inserts.
     session.flush()
     session.add(DemoReceiverHealth(endpoint_id=endpoint_id, healthy=True))
+    session.flush()
+    return endpoint
+
+
+def _find_or_create_bank(
+    session: Session, project: Project, public_base_url: str, marker: str, kind: str
+) -> Endpoint:
+    """Find or create one bank endpoint of the two-banks ledger demo.
+
+    Both banks subscribe to ``trade.executed`` so every trade fans out to each
+    of them through the unmodified delivery path. *kind* is the URL path
+    segment (``naive`` or ``safe``) the bank's receiver route lives under.
+    """
+    existing = session.execute(
+        select(Endpoint).where(
+            Endpoint.project_id == project.id,
+            Endpoint.event_types.contains([marker]),
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+
+    endpoint_id = uuid.uuid4()
+    endpoint = Endpoint(
+        id=endpoint_id,
+        project_id=project.id,
+        # Server-constructed URL, not attacker input.
+        url=f"{public_base_url.rstrip('/')}/showcase/ledger/{kind}/{endpoint_id}",
+        event_types=[marker, TRADE_EXECUTED],
+        secret_enc=encrypt_secret(generate_endpoint_secret()),
+        status=EndpointStatus.active,
+        payload_format=PayloadFormat.raw,
+        rate_limit_rps=None,
+    )
+    session.add(endpoint)
+    # Flush before the health row: linked only by FK, no ORM relationship.
+    session.flush()
+    session.add(DemoReceiverHealth(endpoint_id=endpoint_id, healthy=True, mode="healthy"))
     session.flush()
     return endpoint
 
@@ -236,6 +291,21 @@ def resolve_showcase(session: Session, settings: Settings | None = None) -> Show
     ).scalar_one_or_none()
     if receiver is None:
         return None
+
+    def _bank(marker: str) -> Endpoint | None:
+        return session.execute(
+            select(Endpoint).where(
+                Endpoint.project_id == project.id,
+                Endpoint.event_types.contains([marker]),
+            )
+        ).scalar_one_or_none()
+
+    # Banks missing (e.g. a deployment seeded before the ledger demo existed)
+    # → not resolved; callers fall back to seed_showcase, which backfills them.
+    bank_naive = _bank(BANK_NAIVE_MARKER)
+    bank_safe = _bank(BANK_SAFE_MARKER)
+    if bank_naive is None or bank_safe is None:
+        return None
     discord = session.execute(
         select(Endpoint).where(
             Endpoint.project_id == project.id,
@@ -246,6 +316,8 @@ def resolve_showcase(session: Session, settings: Settings | None = None) -> Show
         project_id=project.id,
         receiver_endpoint_id=receiver.id,
         discord_endpoint_id=discord.id if discord is not None else None,
+        bank_naive_endpoint_id=bank_naive.id,
+        bank_safe_endpoint_id=bank_safe.id,
     )
 
 

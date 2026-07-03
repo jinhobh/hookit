@@ -41,6 +41,7 @@ from app.models.delivery import DeliveryStatus
 from app.models.endpoint import Endpoint
 from app.schemas.metrics import MetricsSummaryResponse
 from app.schemas.showcase import (
+    BurstRequest,
     BurstResponse,
     DeadLetterResponse,
     DeliveriesResponse,
@@ -252,18 +253,20 @@ def redrive(
 
 
 @router.post("/burst", response_model=BurstResponse)
-def burst() -> BurstResponse:
+def burst(body: BurstRequest | None = None) -> BurstResponse:
     """Proxy a load-spike request to the producer's control server.
 
     Keeps the producer private (no public port needed) and gives the dashboard a
-    single same-origin surface. Returns 0 published if the producer is
-    unreachable rather than failing the request.
+    single same-origin surface. With ``same_account=true`` the producer fires
+    concurrent ``trade.executed`` events against one account (the ledger demo's
+    two-writers scenario) instead of a tick spike. Returns 0 published if the
+    producer is unreachable rather than failing the request.
     """
     settings = get_settings()
     url = f"{settings.producer_base_url.rstrip('/')}/burst"
     try:
         with httpx.Client(timeout=settings.delivery_timeout_seconds) as client:
-            resp = client.post(url)
+            resp = client.post(url, json={"same_account": body.same_account if body else False})
             resp.raise_for_status()
             published = int(resp.json().get("published", 0))
     except (httpx.HTTPError, ValueError, TypeError):

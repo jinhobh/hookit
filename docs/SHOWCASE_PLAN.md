@@ -124,18 +124,18 @@ concurrency, disorder, and forgery. Layer 2 builds a live victim to prove it:
 ## Layer 2 — ledger view
 
 ### Phase L1 — Trades producer + ledger schema
-- [ ] Producer emits `trade.executed` events (`account`, `side`, `amount`,
+- [x] Producer emits `trade.executed` events (`account`, `side`, `amount`,
       `trade_id`, `executed_at`) for ~4 demo accounts alongside price events;
       amounts derived from real price moves so the stream stays live.
       New producer settings: `TRADE_INTERVAL_SECONDS`, `TRADE_ACCOUNTS`.
-- [ ] Migration: `demo_ledger_accounts` (`bank`, `account`, `balance`,
+- [x] Migration: `demo_ledger_accounts` (`bank`, `account`, `balance`,
       `status`, `status_as_of`) and `demo_ledger_processed` (`bank`,
       `event_id`, PK on both).
-- [ ] Seeding: two new endpoints on the showcase project subscribing to
+- [x] Seeding: two new endpoints on the showcase project subscribing to
       `trade.executed` (Bank A, Bank B), created in `seed_showcase`.
 
 ### Phase L2 — The two banks
-- [ ] Bank receiver routes in the app (same public-sink pattern as the
+- [x] Bank receiver routes in the app (same public-sink pattern as the
       existing controllable receiver, keyed off the `__showcase__` marker):
       - **Bank A** (`/showcase/ledger/naive/{endpoint_id}`): no signature
         check, no dedupe; deliberate read → sleep(~50 ms) → write so the
@@ -144,28 +144,28 @@ concurrency, disorder, and forgery. Layer 2 builds a live victim to prove it:
         `INSERT` into `demo_ledger_processed` + `SELECT … FOR UPDATE` balance
         update in one transaction; stale-timestamp guard on last-write-wins
         fields.
-- [ ] Per-bank health extends the existing mechanism: healthy / **flaky**
+- [x] Per-bank health extends the existing mechanism: healthy / **flaky**
       (process, then respond 500/timeout) / down.
-- [ ] Deterministic race test: two sessions + a barrier prove Bank A loses an
+- [x] Deterministic race test: two sessions + a barrier prove Bank A loses an
       update and Bank B does not, against real Postgres.
 
 ### Phase L3 — Reconciliation + dashboard panel
-- [ ] `GET /showcase/ledger`: both banks' balances, expected balances computed
+- [x] `GET /showcase/ledger`: both banks' balances, expected balances computed
       from the project's `trade.executed` event log, per-account drift in
       dollars, and each bank's recent received-request tail.
-- [ ] Dashboard: side-by-side bank panel with green/red reconciliation meters
+- [x] Dashboard: side-by-side bank panel with green/red reconciliation meters
       and drift-in-dollars. This becomes the page's centerpiece; the existing
       retry/DLQ controls remain as the plumbing view.
 
 ### Phase L4 — Chaos buttons + copy
-- [ ] `POST /showcase/ledger/health` (per-bank flaky/down toggle) → **Lost
+- [x] `POST /showcase/ledger/health` (per-bank flaky/down toggle) → **Lost
       ack** scenario.
-- [ ] Burst option `same_account=true` (producer + proxy) → **Two writers,
+- [x] Burst option `same_account=true` (producer + proxy) → **Two writers,
       one account** scenario (requires D2's concurrent workers).
-- [ ] **Time travel** uses existing controls (pipeline down → retries → up);
+- [x] **Time travel** uses existing controls (pipeline down → retries → up);
       needs only the stale-overwrite display on the bank panel.
-- [ ] **Forger** button (browser-side POST to both banks, no backend change).
-- [ ] One sentence of on-screen copy per scenario: what broke, which guarantee
+- [x] **Forger** button (browser-side POST to both banks, no backend change).
+- [x] One sentence of on-screen copy per scenario: what broke, which guarantee
       Bank B used to survive it.
 
 ### Phase L5 — Stretch: replay recovery

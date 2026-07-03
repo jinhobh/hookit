@@ -24,7 +24,6 @@ from collections.abc import Generator
 import httpx
 import pytest
 from app.core.config import Settings, get_settings
-from app.db.base import Base
 from app.main import app
 from app.models.api_key import ApiKey, hash_api_key
 from app.models.delivery import Delivery, DeliveryStatus
@@ -38,6 +37,7 @@ from app.services.showcase import (
     PRICE_ALERT,
     PRICE_TICK,
     SHOWCASE_MARKER,
+    TRADE_EXECUTED,
     get_health,
     get_scoped_delivery,
     latest_dead_lettered_id,
@@ -50,7 +50,7 @@ from app.services.showcase import (
 from app.worker.delivery_worker import process_delivery
 from app.worker.signing import build_signature_header
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, selectinload
 
@@ -70,21 +70,8 @@ def _settings(**overrides: object) -> Settings:
 
 
 # ===========================================================================
-# Service tier: savepoint-isolated session
+# Service tier: savepoint-isolated session (fixture shared via conftest)
 # ===========================================================================
-
-
-@pytest.fixture()
-def sc_session(db_engine: Engine) -> Generator[Session, None, None]:
-    """Savepoint-isolated session; rolls back after every test."""
-    Base.metadata.create_all(db_engine)
-    connection = db_engine.connect()
-    outer_tx = connection.begin()
-    session = Session(connection, join_transaction_mode="create_savepoint")
-    yield session
-    session.close()
-    outer_tx.rollback()
-    connection.close()
 
 
 def test_seed_creates_project_receiver_and_health(sc_session: Session) -> None:
@@ -102,6 +89,16 @@ def test_seed_creates_project_receiver_and_health(sc_session: Session) -> None:
     assert get_health(sc_session, receiver.id) is True
     # Discord disabled when no webhook configured.
     assert handles.discord_endpoint_id is None
+
+    # The two ledger banks are seeded alongside, subscribing to trade.executed.
+    for bank_id, kind in (
+        (handles.bank_naive_endpoint_id, "naive"),
+        (handles.bank_safe_endpoint_id, "safe"),
+    ):
+        bank = sc_session.get(Endpoint, bank_id)
+        assert bank is not None
+        assert TRADE_EXECUTED in bank.event_types
+        assert bank.url.endswith(f"/showcase/ledger/{kind}/{bank.id}")
 
 
 def test_seed_with_discord_and_api_key(sc_session: Session) -> None:
@@ -136,7 +133,7 @@ def test_seed_is_idempotent(sc_session: Session) -> None:
         .scalars()
         .all()
     )
-    assert len(rows) == 1  # only the receiver (discord disabled)
+    assert len(rows) == 3  # receiver + the two ledger banks (discord disabled)
 
 
 def test_resolve_returns_none_when_unseeded(sc_session: Session) -> None:
@@ -190,31 +187,8 @@ def test_scoping_helpers_reject_foreign_delivery(sc_session: Session) -> None:
 
 # ===========================================================================
 # Integration tier: real sessions, real commits, explicit cleanup
+# (isolated_showcase fixture shared via conftest)
 # ===========================================================================
-
-
-@pytest.fixture()
-def isolated_showcase(
-    db_engine: Engine, monkeypatch: pytest.MonkeyPatch
-) -> Generator[str, None, None]:
-    """Point the app at a unique, disposable showcase project for one test.
-
-    Overrides the showcase name via env (cache-cleared so the routes pick it up),
-    yields that name, and deletes the project — with everything ON DELETE CASCADE
-    takes — at teardown.
-    """
-    Base.metadata.create_all(db_engine)
-    name = f"__showcase_it_{uuid.uuid4().hex[:10]}__"
-    monkeypatch.setenv("SHOWCASE_PROJECT_NAME", name)
-    monkeypatch.setenv("SHOWCASE_DISCORD_WEBHOOK_URL", "")
-    monkeypatch.setenv("SHOWCASE_API_KEY", "")
-    get_settings.cache_clear()
-    yield name
-    get_settings.cache_clear()
-    with Session(db_engine) as session:
-        session.execute(delete(Project).where(Project.name == name))
-        session.commit()
-    get_settings.cache_clear()
 
 
 def _receiver(db_engine: Engine) -> tuple[uuid.UUID, uuid.UUID, str]:
