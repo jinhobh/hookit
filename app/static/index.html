@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>HOOKIT · Live Delivery Console</title>
+    <title>HookIt · Live Demo</title>
     <style>
       :root {
         --bg: #0b0e14;
@@ -366,14 +366,14 @@
   </head>
   <body>
     <header>
-      <div class="brand">HOOK<span>IT</span> · Live Delivery Console</div>
-      <span id="live-dot" class="dot" title="polling status"></span>
+      <div class="brand">Hook<span>It</span> · Live Demo</div>
+      <span id="live-dot" class="dot" title="connection status"></span>
       <span class="live-label" id="live-label">connecting…</span>
       <div class="spacer"></div>
-      <nav class="scenes-nav" aria-label="Scenes">
-        <a href="#scene-1">1 · Live stream</a>
-        <a href="#scene-2">2 · Break the pipeline</a>
-        <a href="#scene-3">3 · Two banks</a>
+      <nav class="scenes-nav" aria-label="Stories">
+        <a href="#banks">The two banks</a>
+        <a href="#receiver">Your receiver</a>
+        <a href="#feed">Live feed</a>
       </nav>
       <details class="adv">
         <summary>⚙ Advanced</summary>
@@ -387,158 +387,158 @@
     <main>
       <!-- ============ HERO: orientation ============ -->
       <section class="hero">
-        <p class="eyebrow">Live system · nothing on this page is simulated</p>
-        <h1>Watch a webhook platform survive real failures.</h1>
+        <p class="eyebrow">Live demo · nothing on this page is staged</p>
+        <h1>The delivery service for messages between apps.</h1>
         <p class="lede">
-          Right now, a producer is publishing <strong>live crypto prices and trades</strong> to this
-          platform's API. HookIt signs every event and delivers it to the receivers below —
-          retrying with exponential backoff until each delivery lands.
-          <strong>Your job is to break things.</strong> The platform's job is to recover.
+          Right now, a small demo trading app is sending out live prices and trades. HookIt takes
+          each message, <strong>seals it</strong> so no one can fake it, and delivers it to the
+          receivers below — and if a receiver is down, it <strong>keeps trying until the message
+          lands</strong>. Your job on this page is to break things, for real. HookIt's job is to
+          recover.
         </p>
 
-        <div class="map" role="group" aria-label="Live pipeline">
+        <div class="map" role="group" aria-label="Where every message goes">
           <div class="mnode">
-            <span class="mtitle">PRODUCER</span>
-            <span class="msub">live market prices &amp; trades</span>
-            <span class="mstat mono" id="map-producer">waiting for events…</span>
+            <span class="mtitle">THE SENDER</span>
+            <span class="msub">a demo trading app</span>
+            <span class="mstat mono" id="map-producer">waiting for the first message…</span>
           </div>
           <div class="mflow" aria-hidden="true"></div>
           <div class="mnode core">
-            <span class="mtitle">HOOKIT ENGINE</span>
-            <span class="msub">sign · queue · deliver · retry</span>
+            <span class="mtitle">HOOKIT</span>
+            <span class="msub">seals, queues, and delivers every message</span>
             <span class="mstat mono" id="map-engine">—</span>
           </div>
           <div class="mflow" aria-hidden="true"></div>
           <div class="mdests">
-            <a class="mdest" href="#scene-1"><span class="mdot" id="mdot-discord"></span>Discord channel<span class="mnote" id="map-discord">—</span></a>
-            <a class="mdest" href="#scene-2"><span class="mdot" id="mdot-pipe"></span>Your pipeline<span class="mnote" id="map-pipe">—</span></a>
-            <a class="mdest" href="#scene-3"><span class="mdot" id="mdot-banks"></span>Two demo banks<span class="mnote" id="map-banks">—</span></a>
+            <a class="mdest" href="#banks"><span class="mdot" id="mdot-banks"></span>Two demo banks<span class="mnote" id="map-banks">—</span></a>
+            <a class="mdest" href="#receiver"><span class="mdot" id="mdot-pipe"></span>A receiver you control<span class="mnote" id="map-pipe">—</span></a>
+            <a class="mdest" href="#feed"><span class="mdot" id="mdot-discord"></span>A real Discord channel<span class="mnote" id="map-discord">—</span></a>
           </div>
         </div>
+        <p class="pulse mono" id="pulse" hidden></p>
         <p class="howto">
-          <b>New here?</b> Follow the three scenes in order — each one breaks something real and
-          shows which guarantee handles it. Click a receiver above to jump straight to it.
+          <b>Three short stories below.</b> Each one lets you break something real and watch what
+          happens. Click a destination above to jump straight to it.
         </p>
       </section>
 
-      <!-- ============ SCENE 1: the live stream ============ -->
-      <section class="scene" id="scene-1">
-        <span class="scene-num">Scene 1</span>
-        <h2>The live stream</h2>
+      <!-- ============ STORY 1: two banks ============ -->
+      <section class="scene" id="banks">
+        <span class="scene-num">Story 1 · two banks</span>
+        <h2>Two banks get the exact same messages. Only one keeps its money safe.</h2>
         <p class="scene-lede">
-          Every row below is a real event published to <code>POST /events</code> and fanned out by
-          the delivery engine. The Discord channel on the right is a real server receiving the same
-          price alerts, signed and delivered by this platform.
+          HookIt delivers every trade to two demo banks. <strong>Bank A</strong> believes
+          everything it's told — no checks at all. <strong>Bank B</strong> follows the safety
+          rules HookIt makes possible: check the seal, skip repeats, take turns writing, ignore
+          stale news. Use the buttons to cause real trouble, then watch Bank A's books drift
+          while Bank B's always add up.
         </p>
         <div class="actions">
           <div class="action">
-            <button id="burst-btn">Generate load ⚡</button>
-            <p>Ask the producer to fire a rapid burst of events through the whole pipeline. Watch the counters and the feed react.</p>
+            <button id="lostack-btn" class="danger">Lose the confirmations</button>
+            <p>The banks keep processing trades but stop saying &ldquo;got it&rdquo;, so HookIt sends each one again. Bank A counts the same trade twice. Bank B notices the repeat and ignores it.</p>
           </div>
           <div class="action">
-            <button id="dup-btn" class="ghost">Publish duplicate ×2</button>
-            <p>Two identical POSTs race in at once with one <code>Idempotency-Key</code>. Only one event should exist afterwards — the result appears here.</p>
+            <button id="storm-btn">Send a rush of trades</button>
+            <p>Dozens of trades hit one account at the same moment. Bank A's bookkeeping trips over itself and loses one. Bank B takes them one at a time and stays exact.</p>
+          </div>
+          <div class="action">
+            <button id="timetravel-btn" class="ghost">Take both banks offline</button>
+            <p>While the banks are offline, HookIt holds every trade and keeps trying. When they come back, old messages arrive mixed in with new ones — Bank B checks dates, so old news never overwrites new.</p>
+          </div>
+          <div class="action">
+            <button id="forge-ledger-btn" class="ghost">Slip in a fake trade</button>
+            <p>Send a fake $5,000 trade straight to both banks, going around HookIt. Bank A books money that never existed. Bank B checks the seal and turns it away.</p>
+          </div>
+        </div>
+        <p id="ledger-note" class="note" hidden></p>
+        <div id="banks-wrap" class="banks">
+          <p class="msg">Waiting for the first trades — the demo sender publishes every few seconds.</p>
+        </div>
+      </section>
+
+      <!-- ============ STORY 2: your receiver ============ -->
+      <section class="scene" id="receiver">
+        <span class="scene-num">Story 2 · your receiver</span>
+        <h2>What happens when the receiver goes offline?</h2>
+        <p class="scene-lede">
+          This receiver is <strong>yours</strong>. Switch it off and watch HookIt refuse to give
+          up: it tries again, waits a little longer between tries, and if the receiver stays down
+          too long, it sets the message aside — <strong>safe, not lost</strong>. Then switch the
+          receiver back on and ask HookIt to finish the job.
+        </p>
+        <p class="status-line">Your receiver is <span id="health-pill" class="pill up">● accepting messages</span></p>
+        <div class="actions">
+          <div class="action">
+            <button id="health-btn" class="danger">Switch the receiver off</button>
+            <p>Deliveries start failing for real. HookIt tries again, waiting a bit longer each time — watch the tracking list below.</p>
+          </div>
+          <div class="action">
+            <button id="forge-btn" class="ghost">Send a fake message</button>
+            <p>Sneak an unsealed message straight to your receiver. It's turned away — you'll see it in the mailbox marked &ldquo;rejected&rdquo;.</p>
+          </div>
+          <div class="action" id="force-dlq-wrap" hidden>
+            <button id="force-dlq" class="ghost">Fast-forward one message ⏩</button>
+            <p>Don't want to wait out the retries? Jump one failing message straight to &ldquo;set aside&rdquo;.</p>
+          </div>
+          <div class="action" id="redrive-wrap" hidden>
+            <button id="redrive-link">Deliver the set-aside messages</button>
+            <p>Now that the receiver is back, ask HookIt to deliver everything it set aside. Watch them arrive.</p>
+          </div>
+        </div>
+        <p class="panel-title">Delivery tracking · every try, exactly as it happened</p>
+        <div id="workers-strip" class="workers" hidden></div>
+        <div id="lifecycle-wrap" class="lifecycle">
+          <p class="msg">Messages headed to your receiver appear here, each with its full delivery history.</p>
+        </div>
+        <p class="panel-title">Your receiver's mailbox · what actually arrived</p>
+        <div id="inbox-wrap" class="inbox">
+          <p class="msg">Nothing here yet — messages that reach your receiver appear here.</p>
+        </div>
+      </section>
+
+      <!-- ============ STORY 3: the live feed ============ -->
+      <section class="scene" id="feed">
+        <span class="scene-num">Story 3 · the live feed</span>
+        <h2>See for yourself — these messages are real.</h2>
+        <p class="scene-lede">
+          This is the live stream of messages the demo sender is publishing right now: crypto
+          prices and trades. The Discord channel next to it is a real public server — HookIt is
+          delivering the same alerts there as you watch.
+        </p>
+        <div class="actions">
+          <div class="action">
+            <button id="burst-btn">Send a burst of messages</button>
+            <p>Ask the sender to fire off a quick flood. Watch the counters climb.</p>
+          </div>
+          <div class="action">
+            <button id="dup-btn" class="ghost">Send the same message twice</button>
+            <p>Two identical messages arrive at the exact same instant. HookIt keeps one and ignores the copy — nothing ever gets counted twice.</p>
           </div>
         </div>
         <p id="dup-note" class="note" hidden></p>
         <div id="cards" class="cards"></div>
         <div class="grid">
           <div>
-            <p class="panel-title">Live events · published to <code>POST /events</code></p>
+            <p class="panel-title">Live messages from the sender</p>
             <div id="feed-wrap" class="feed">
-              <p class="msg">No events yet. The producer publishes every few seconds — if this stays empty, the producer service isn't running (<code>python -m producer</code>).</p>
+              <p class="msg">No messages yet — the demo sender publishes every few seconds.</p>
             </div>
           </div>
           <div>
-            <p class="panel-title">Real Discord channel · the same alerts, delivered</p>
+            <p class="panel-title">A real Discord channel, receiving the same alerts</p>
             <div id="discord-wrap" class="discord">
-              <p class="msg">Discord embed not configured. Set <code>DISCORD_WIDGET_SERVER_ID</code> and <code>DISCORD_WIDGET_CHANNEL_ID</code>.</p>
+              <p class="msg">The Discord view isn't set up on this deployment.</p>
             </div>
           </div>
-        </div>
-      </section>
-
-      <!-- ============ SCENE 2: break the pipeline ============ -->
-      <section class="scene" id="scene-2">
-        <span class="scene-num">Scene 2</span>
-        <h2>Break your pipeline — watch retries, backoff, and the dead-letter queue</h2>
-        <p class="scene-lede">
-          One of the receivers is a pipeline <strong>you control</strong>. Take it down and every
-          delivery starts failing for real: the timeline below shows each attempt, the measured
-          backoff gap between attempts, and the live countdown to the next retry. Give up after
-          enough attempts and a delivery is <strong>dead-lettered</strong> — bring the pipeline
-          back and redrive it to recover.
-        </p>
-        <p class="status-line">Your pipeline is <span id="health-pill" class="pill up">● Healthy</span></p>
-        <div class="actions">
-          <div class="action">
-            <button id="health-btn" class="danger">Bring pipeline down</button>
-            <p>Your receiver starts answering 503. Deliveries fail and retry with exponential backoff — watch the timeline fill up.</p>
-          </div>
-          <div class="action">
-            <button id="forge-btn" class="ghost">Send forged request 🕵</button>
-            <p>POST an unsigned payload straight to your receiver from this browser. The HMAC check rejects it — it lands in the inbox as <code>401</code>.</p>
-          </div>
-          <div class="action" id="force-dlq-wrap" hidden>
-            <button id="force-dlq" class="ghost">Force one to dead-letter →</button>
-            <p>Impatient? Fast-forward one failing delivery through its remaining retries so it dead-letters now.</p>
-          </div>
-          <div class="action" id="redrive-wrap" hidden>
-            <button id="redrive-link">Redrive dead-letters ↻</button>
-            <p>Requeue every dead-lettered delivery through the normal path — now that the pipeline is healthy, they succeed.</p>
-          </div>
-        </div>
-        <p class="panel-title">Delivery lifecycle · every attempt, backoff gap, and lease — straight from the engine's own rows</p>
-        <div id="workers-strip" class="workers" hidden></div>
-        <div id="lifecycle-wrap" class="lifecycle">
-          <p class="msg">Recent deliveries to your pipeline appear here with their full retry history.</p>
-        </div>
-        <p class="panel-title">Your pipeline's inbox · signed requests received</p>
-        <div id="inbox-wrap" class="inbox">
-          <p class="msg">Nothing received yet — deliveries that reach your endpoint show up here with their real HMAC signature.</p>
-        </div>
-      </section>
-
-      <!-- ============ SCENE 3: two banks ============ -->
-      <section class="scene" id="scene-3">
-        <span class="scene-num">Scene 3 · the payoff</span>
-        <h2>One event stream, two banks — only one stays solvent</h2>
-        <p class="scene-lede">
-          The platform delivers the same signed <code>trade.executed</code> events to two bank
-          applications. <strong>Bank A</strong> trusts whatever arrives: no signature check, no
-          dedupe, no locking. <strong>Bank B</strong> uses the delivery metadata — stable
-          <code>event_id</code>, signed timestamp, HMAC — the way a correct receiver should. The
-          meter on each bank continuously diffs its ledger against the platform's own event log.
-          Break the world with the buttons below and watch who bleeds money.
-        </p>
-        <div class="actions">
-          <div class="action">
-            <button id="lostack-btn" class="danger">Drop acks 📉</button>
-            <p>Both banks keep processing webhooks but stop acknowledging them, so the platform retries. Bank A credits the same trade twice; Bank B dedupes on <code>event_id</code>.</p>
-          </div>
-          <div class="action">
-            <button id="storm-btn">Trade storm 🌊</button>
-            <p>Concurrent trades hit one account across parallel workers. Bank A's read-modify-write loses an update; Bank B's row lock keeps the exact total.</p>
-          </div>
-          <div class="action">
-            <button id="timetravel-btn" class="ghost">Pull the plug 🔌</button>
-            <p>Take both banks down so deliveries queue as retries, then restore. Old retries arrive mixed with fresh trades — Bank B rejects stale overwrites by timestamp.</p>
-          </div>
-          <div class="action">
-            <button id="forge-ledger-btn" class="ghost">Forge a trade 🕵</button>
-            <p>POST an unsigned $5,000 trade straight at both banks from this browser. Bank A books money that never existed; Bank B's HMAC check answers 401.</p>
-          </div>
-        </div>
-        <p id="ledger-note" class="note" hidden></p>
-        <div id="banks-wrap" class="banks">
-          <p class="msg">Waiting for the first trades… if this stays empty, the producer service isn't running (<code>python -m producer</code>).</p>
         </div>
       </section>
     </main>
 
     <footer>
-      Every failure on this page is injected into the running system; every recovery is the
-      production delivery code doing its job.
+      Nothing on this page is staged. Every breakdown you cause really happens, and every
+      recovery is HookIt's actual delivery engine doing its job.
     </footer>
 
     <script>
@@ -589,13 +589,13 @@
 
       // ---- traffic + reliability controls --------------------------------
       $("burst-btn").addEventListener("click", () =>
-        act($("burst-btn"), "Generating…", async () => {
+        act($("burst-btn"), "Sending…", async () => {
           const r = await api("/showcase/burst", { method: "POST" });
-          if (!r || !r.published) alert("Producer unreachable — no burst fired. Is `python -m producer` running?");
+          if (!r || !r.published) alert("The demo sender isn't answering, so nothing was sent.");
         }));
 
       $("dup-btn").addEventListener("click", () =>
-        act($("dup-btn"), "Racing…", async () => {
+        act($("dup-btn"), "Sending…", async () => {
           const r = await api("/showcase/duplicate", { method: "POST" });
           if (!r || !r.results || r.results.length < 2) {
             alert("Producer unreachable — no duplicate fired. Is `python -m producer` running?");
@@ -616,7 +616,7 @@
 
       $("health-btn").addEventListener("click", () => {
         const next = !health;
-        act($("health-btn"), next ? "Restoring…" : "Bringing down…", async () => {
+        act($("health-btn"), "Switching…", async () => {
           const r = await api("/showcase/health", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -631,14 +631,14 @@
         act($("force-dlq"), "Fast-forwarding…", async () => {
           try { await api("/showcase/dead-letter", { method: "POST" }); }
           catch (err) {
-            if (err.status === 409) { alert("Bring the pipeline down first."); return; }
+            if (err.status === 409) { alert("Switch the receiver off first — messages are only set aside while it's off."); return; }
             throw err;
           }
         });
       });
 
       $("forge-btn").addEventListener("click", () =>
-        act($("forge-btn"), "Forging…", async () => {
+        act($("forge-btn"), "Sending…", async () => {
           if (!lifecycle) throw new Error("receiver not resolved yet");
           const res = await fetch(apiBase() + "/showcase/receiver/" + lifecycle.receiver_endpoint_id, {
             method: "POST",
@@ -650,7 +650,7 @@
         }));
 
       $("redrive-link").addEventListener("click", () => {
-        act($("redrive-link"), "Redriving…", async () => {
+        act($("redrive-link"), "Delivering…", async () => {
           await api("/showcase/redrive", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -679,7 +679,7 @@
 
       $("lostack-btn").addEventListener("click", () => {
         const restoring = anyBankMode("flaky");
-        act($("lostack-btn"), restoring ? "Restoring…" : "Dropping…", async () => {
+        act($("lostack-btn"), "Switching…", async () => {
           await setBothBanks(restoring ? "healthy" : "flaky");
           ledgerNote(restoring
             ? `Acks restored — pending retries will now succeed. Bank A is left holding the double credits; ` +
@@ -691,7 +691,7 @@
 
       $("timetravel-btn").addEventListener("click", () => {
         const restoring = anyBankMode("down");
-        act($("timetravel-btn"), restoring ? "Restoring…" : "Unplugging…", async () => {
+        act($("timetravel-btn"), "Switching…", async () => {
           await setBothBanks(restoring ? "healthy" : "down");
           ledgerNote(restoring
             ? `Banks are back. Queued retries now arrive <b>interleaved with fresh trades — out of order</b>. Bank A stamps ` +
@@ -702,7 +702,7 @@
       });
 
       $("storm-btn").addEventListener("click", () =>
-        act($("storm-btn"), "Flooding…", async () => {
+        act($("storm-btn"), "Sending…", async () => {
           const r = await api("/showcase/burst", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -714,7 +714,7 @@
         }));
 
       $("forge-ledger-btn").addEventListener("click", () =>
-        act($("forge-ledger-btn"), "Forging…", async () => {
+        act($("forge-ledger-btn"), "Sending…", async () => {
           if (!ledgerData) throw new Error("banks not resolved yet");
           const account = (ledgerData.banks[0].accounts[0] || {}).account || "mallory";
           const forged = JSON.stringify({
@@ -798,10 +798,10 @@
         $("banks-wrap").innerHTML = ledgerData.banks.map(bankCard).join("");
         const flaky = anyBankMode("flaky"), down = anyBankMode("down");
         const lostack = $("lostack-btn"), tt = $("timetravel-btn");
-        lostack.textContent = flaky ? "Restore acks ✅" : "Drop acks 📉";
+        lostack.textContent = flaky ? "Restore the confirmations" : "Lose the confirmations";
         lostack.className = flaky ? "" : "danger";
         lostack.disabled = down;
-        tt.textContent = down ? "Plug it back in 🔌" : "Pull the plug 🔌";
+        tt.textContent = down ? "Bring the banks back" : "Take both banks offline";
         tt.className = down ? "" : "ghost";
         tt.disabled = flaky;
       }
@@ -810,12 +810,12 @@
         const pill = $("health-pill");
         const btn = $("health-btn");
         if (health) {
-          pill.className = "pill up"; pill.textContent = "● Healthy";
-          btn.textContent = "Bring pipeline down"; btn.className = "danger";
+          pill.className = "pill up"; pill.textContent = "● accepting messages";
+          btn.textContent = "Switch the receiver off"; btn.className = "danger";
           $("force-dlq-wrap").hidden = true;
         } else {
-          pill.className = "pill down"; pill.textContent = "● Down";
-          btn.textContent = "Restore pipeline"; btn.className = "";
+          pill.className = "pill down"; pill.textContent = "● offline";
+          btn.textContent = "Switch it back on"; btn.className = "";
           $("force-dlq-wrap").hidden = false;
         }
         $("redrive-wrap").hidden = dlqDepth === 0;
@@ -1054,7 +1054,7 @@
       function setLive(on) {
         $("live-dot").classList.toggle("live", on);
         document.body.classList.toggle("live", on);
-        $("live-label").textContent = on ? "live — polling every 2s" : "offline";
+        $("live-label").textContent = on ? "live" : "connection lost — retrying";
       }
       async function refresh() {
         try {

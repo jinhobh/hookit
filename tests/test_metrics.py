@@ -209,7 +209,7 @@ def test_dashboard_page_served() -> None:
     response = client.get("/dashboard/")
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
-    assert "Delivery Console" in response.text
+    assert "HookIt · Live Demo" in response.text
 
 
 # ---------------------------------------------------------------------------
