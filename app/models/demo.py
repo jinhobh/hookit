@@ -16,6 +16,10 @@ endpoints.
   demo: per-account balances kept by each bank receiver (a bank *is* a
   showcase endpoint), and the safe bank's processed-events table whose primary
   key makes duplicate deliveries a no-op.
+- ``DemoVisitorActivity`` records when a real dashboard visitor was last seen
+  (as opposed to the ``producer`` service's own self-generated traffic), so
+  the idle watchdog (``app.services.idle_watchdog``) knows when it is safe to
+  scale the ``producer``/``worker`` Fly machines down to save cost.
 """
 
 from __future__ import annotations
@@ -149,3 +153,29 @@ class DemoLedgerProcessed(Base):
 
     def __repr__(self) -> str:
         return f"DemoLedgerProcessed(endpoint_id={self.endpoint_id!r}, event_id={self.event_id!r})"
+
+
+class DemoVisitorActivity(Base):
+    """When a real dashboard visitor was last seen for the showcase project.
+
+    One row per project. Touched only by the dashboard's own read routes
+    (``GET /showcase/summary|feed|deliveries``), never by the ``producer``
+    service's self-generated traffic — that distinction is what lets the idle
+    watchdog tell "someone is watching" apart from "the producer is polling
+    Coinbase and posting to itself."
+    """
+
+    __tablename__ = "demo_visitor_activity"
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"DemoVisitorActivity(project_id={self.project_id!r}, "
+            f"last_seen_at={self.last_seen_at!r})"
+        )

@@ -73,6 +73,7 @@ from app.services.showcase import (
     resolve_showcase,
     seed_showcase,
     set_health,
+    touch_visitor_seen,
 )
 from app.worker.signing import verify_signature
 
@@ -99,10 +100,28 @@ def get_showcase(session: Session = Depends(get_session)) -> ShowcaseHandles:
     return handles
 
 
+def record_visitor_activity(
+    handles: ShowcaseHandles = Depends(get_showcase),
+    session: Session = Depends(get_session),
+) -> None:
+    """Mark that a real dashboard visitor is active right now.
+
+    Applied only to the GET routes the dashboard's own polling loop calls
+    (never to producer-triggered or click-triggered POSTs) so the idle
+    watchdog (``app.services.idle_watchdog``) can tell a visitor apart from
+    the ``producer`` service's self-generated traffic. Commits on its own —
+    some of the routes it's attached to (``summary``, ``deliveries``) are
+    otherwise read-only and never commit themselves.
+    """
+    touch_visitor_seen(session, handles.project_id)
+    session.commit()
+
+
 @router.get("/summary", response_model=MetricsSummaryResponse)
 def summary(
     handles: ShowcaseHandles = Depends(get_showcase),
     session: Session = Depends(get_session),
+    _visitor: None = Depends(record_visitor_activity),
 ) -> MetricsSummaryResponse:
     """Aggregate delivery health for the showcase project (public read)."""
     return delivery_summary(session, handles.project_id)
@@ -112,6 +131,7 @@ def summary(
 def feed(
     handles: ShowcaseHandles = Depends(get_showcase),
     session: Session = Depends(get_session),
+    _visitor: None = Depends(record_visitor_activity),
 ) -> FeedResponse:
     """Return the live producer event feed, receiver inbox, and current health."""
     settings = get_settings()
@@ -138,6 +158,7 @@ def feed(
 def deliveries(
     handles: ShowcaseHandles = Depends(get_showcase),
     session: Session = Depends(get_session),
+    _visitor: None = Depends(record_visitor_activity),
 ) -> DeliveriesResponse:
     """Return the receiver's recent deliveries with attempts + retry config.
 

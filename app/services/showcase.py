@@ -29,14 +29,15 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, func, select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import Settings, get_settings
 from app.models.api_key import ApiKey, hash_api_key
 from app.models.delivery import Delivery, DeliveryStatus
-from app.models.demo import DemoReceivedRequest, DemoReceiverHealth
+from app.models.demo import DemoReceivedRequest, DemoReceiverHealth, DemoVisitorActivity
 from app.models.endpoint import Endpoint, EndpointStatus, PayloadFormat
 from app.models.event import Event
 from app.models.project import Project
@@ -397,6 +398,38 @@ def set_health(session: Session, endpoint_id: uuid.UUID, healthy: bool) -> None:
     else:
         row.healthy = healthy
     session.flush()
+
+
+# ---------------------------------------------------------------------------
+# Visitor activity (idle watchdog)
+# ---------------------------------------------------------------------------
+
+
+def touch_visitor_seen(session: Session, project_id: uuid.UUID) -> None:
+    """Upsert "now" as the project's last real-visitor timestamp.
+
+    Called only from the dashboard's own read routes — never from the
+    ``producer`` service's self-generated traffic — so it is a reliable
+    signal for the idle watchdog. The caller commits.
+
+    Uses INSERT … ON CONFLICT DO UPDATE so concurrent first-visit requests
+    (all three dashboard GET routes fire in parallel via Promise.all) cannot
+    race to insert the same primary key and cause an IntegrityError.
+    """
+    session.execute(
+        pg_insert(DemoVisitorActivity)
+        .values(project_id=project_id)
+        .on_conflict_do_update(
+            index_elements=["project_id"],
+            set_={"last_seen_at": func.now()},
+        )
+    )
+
+
+def get_last_visitor_seen(session: Session, project_id: uuid.UUID) -> datetime | None:
+    """Return when a real visitor was last seen, or None if never recorded."""
+    row = session.get(DemoVisitorActivity, project_id)
+    return row.last_seen_at if row is not None else None
 
 
 # ---------------------------------------------------------------------------
